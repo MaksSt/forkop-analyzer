@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 - 2026-08-06
+
+- Исправлена несовместимая с BusyBox awk агрегация latency samples.
+- Реальные latency, min/max и jitter больше не превращаются в нули.
+- Агрегация подтверждена live Quick benchmark на OpenWrt 25.12.5.
+
 ## 0.1.2 - 2026-08-06
 
 - Нулевые и некорректные Clash delay больше не считаются успешными latency-пробами.

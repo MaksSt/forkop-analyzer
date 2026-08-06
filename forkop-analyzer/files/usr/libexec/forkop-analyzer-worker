@@ -163,10 +163,7 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 	SUCCESSFUL="$(latency_sample_count "$SAMPLES")"
 
 	if [ "$SUCCESSFUL" -gt 0 ]; then
-		metrics="$(awk 'NR == 1 { min=$1; max=$1; prev=$1 } {
-			sum += $1; if ($1 < min) min=$1; if ($1 > max) max=$1;
-			if (NR > 1) { d=$1-prev; if (d < 0) d=-d; diff += d } prev=$1
-		} END { printf "%.3f %.3f %.3f %.3f", sum/NR, min, max, NR > 1 ? diff/(NR-1) : 0 }' "$SAMPLES")"
+		metrics="$(latency_metrics "$SAMPLES")"
 		LATENCY="$(printf '%s\n' "$metrics" | awk '{print $1}')"
 		LATENCY_MIN="$(printf '%s\n' "$metrics" | awk '{print $2}')"
 		LATENCY_MAX="$(printf '%s\n' "$metrics" | awk '{print $3}')"

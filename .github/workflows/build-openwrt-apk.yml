@@ -19,7 +19,7 @@ on:
       release_tag:
         description: GitHub Release tag
         required: true
-        default: v0.1.2
+        default: v0.1.3
   push:
     tags:
       - "v*"
@@ -38,7 +38,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      PROJECT_VERSION: "0.1.2"
+      PROJECT_VERSION: "0.1.3"
       PROJECT_RELEASE: "1"
       FORKOP_SOURCE_SHA: "dd483297be0ac4e52bb8f482e2640238b75af532"
 
@@ -230,9 +230,9 @@ jobs:
           cat > "$release_notes" <<EOF
           ## Изменения
 
-            - Нулевые и некорректные Clash delay больше не считаются успешными latency-пробами.
-            - \`success_pct\` вычисляется из фактически принятых samples и остаётся согласованным с latency и score.
-            - Добавлены unit-тесты строгой валидации latency samples.
+            - Исправлена агрегация latency samples под BusyBox awk на OpenWrt.
+            - Реальные задержка, диапазон и jitter больше не преобразуются в нули.
+            - Добавлены regression-тесты многоточечных, одиночных и пустых sample sets.
 
           ## Совместимость
 

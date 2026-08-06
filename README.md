@@ -72,14 +72,14 @@ Backend использует только заявленные зависимо�
 
 Надёжный способ:
 
-1. Скачай из [GitHub Release v0.1.2](https://github.com/MaksSt/forkop-analyzer/releases/tag/v0.1.2):
-   - `forkop-analyzer-0.1.2-r1.apk`;
-   - `luci-app-forkop-analyzer-0.1.2-r1.apk`;
+1. Скачай из [GitHub Release v0.1.3](https://github.com/MaksSt/forkop-analyzer/releases/tag/v0.1.3):
+   - `forkop-analyzer-0.1.3-r1.apk`;
+   - `luci-app-forkop-analyzer-0.1.3-r1.apk`;
    - `SHA256SUMS`.
 2. Сверь SHA-256.
 3. Открой **System → Software → Upload Package**.
-4. Загрузи сначала `forkop-analyzer-0.1.2-r1.apk`.
-5. Затем загрузи `luci-app-forkop-analyzer-0.1.2-r1.apk`.
+4. Загрузи сначала `forkop-analyzer-0.1.3-r1.apk`.
+5. Затем загрузи `luci-app-forkop-analyzer-0.1.3-r1.apk`.
 6. Обнови страницу LuCI. Интерфейс появится в **Services → Forkop Analyzer**.
 
 Не вставляй GitHub URL в поле **Download and install package**: этот путь не проверен на целевой версии.
@@ -88,10 +88,10 @@ Backend использует только заявленные зависимо�
 
 ```sh
 wget -O /tmp/forkop-analyzer.apk \
-  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.1.2/forkop-analyzer-0.1.2-r1.apk
+  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.1.3/forkop-analyzer-0.1.3-r1.apk
 
 wget -O /tmp/luci-app-forkop-analyzer.apk \
-  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.1.2/luci-app-forkop-analyzer-0.1.2-r1.apk
+  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.1.3/luci-app-forkop-analyzer-0.1.3-r1.apk
 
 apk add --allow-untrusted \
   /tmp/forkop-analyzer.apk \
@@ -107,7 +107,7 @@ apk add --allow-untrusted \
 ```sh
 wget -O /tmp/install-forkop-analyzer.sh \
   https://raw.githubusercontent.com/MaksSt/forkop-analyzer/main/install.sh
-sh /tmp/install-forkop-analyzer.sh --version v0.1.2
+sh /tmp/install-forkop-analyzer.sh --version v0.1.3
 ```
 
 `install.sh` проверяет OpenWrt/apk, Forkop, package architecture и `SHA256SUMS`; TLS verification не отключается. Доступны `--prerelease`, `--no-start`, `--uninstall`, `--help`.
@@ -124,7 +124,7 @@ apk add --allow-untrusted --upgrade \
 /etc/init.d/rpcd restart
 ```
 
-Команда соответствует installer v0.1.2, но ещё не проверена на чистом live OpenWrt 25.12.4.
+Команда соответствует installer v0.1.3, но ещё не проверена на чистом live OpenWrt 25.12.4.
 
 ## Удаление
 
@@ -283,8 +283,8 @@ make package/luci-app-forkop-analyzer/compile V=s
 
 GitHub Actions скачивает SDK только с `downloads.openwrt.org`, проверяет SDK по official `sha256sums`, pin-ит Forkop commit, собирает оба APK, проверяет contents/dependencies и формирует детерминированные assets:
 
-- `forkop-analyzer-0.1.2-r1.apk`;
-- `luci-app-forkop-analyzer-0.1.2-r1.apk`;
+- `forkop-analyzer-0.1.3-r1.apk`;
+- `luci-app-forkop-analyzer-0.1.3-r1.apk`;
 - `SHA256SUMS`.
 
 ## Тестирование

@@ -16,6 +16,24 @@ latency_sample_count() {
 	awk 'NF { count++ } END { print count + 0 }' "$1"
 }
 
+latency_metrics() {
+	awk 'NR == 1 { min=$1; max=$1; prev=$1 } {
+		sum += $1;
+		if ($1 < min) min=$1;
+		if ($1 > max) max=$1;
+		if (NR > 1) {
+			diff=$1-prev;
+			if (diff < 0) diff=-diff;
+			diff_sum += diff;
+		}
+		prev=$1;
+	} END {
+		if (NR == 0) exit 1;
+		printf "%.3f %.3f %.3f %.3f", sum/NR, min, max,
+			(NR > 1 ? diff_sum/(NR-1) : 0);
+	}' "$1"
+}
+
 latency_success_percentage() {
 	awk -v successful="$1" -v attempts="$2" 'BEGIN {
 		printf "%.2f", (attempts > 0 ? successful * 100 / attempts : 0);

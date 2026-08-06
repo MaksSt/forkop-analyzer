@@ -37,8 +37,21 @@ trap 'rm -f "$samples"' EXIT
 printf '15\n20.5\n35\n' > "$samples"
 
 [ "$(latency_sample_count "$samples")" = '3' ]
+[ "$(latency_metrics "$samples")" = '23.500 15.000 35.000 10.000' ]
 [ "$(latency_success_percentage 3 3)" = '100.00' ]
 [ "$(latency_success_percentage 2 3)" = '66.67' ]
 [ "$(latency_success_percentage 0 3)" = '0.00' ]
+
+printf '267\n271\n273\n' > "$samples"
+[ "$(latency_metrics "$samples")" = '270.333 267.000 273.000 3.000' ]
+
+printf '42\n' > "$samples"
+[ "$(latency_metrics "$samples")" = '42.000 42.000 42.000 0.000' ]
+
+: > "$samples"
+if latency_metrics "$samples" >/dev/null 2>&1; then
+	printf 'FAIL: empty latency sample set produced metrics.\n' >&2
+	exit 1
+fi
 
 printf 'Latency sample tests passed.\n'
