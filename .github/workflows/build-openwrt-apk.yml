@@ -230,9 +230,9 @@ jobs:
           cat > "$release_notes" <<EOF
           ## Изменения
 
-          - Исправлено отображение строк в таблицах Overview, Results и деталей job.
-          - DOM-узлы больше не преобразуются в текст вида \`[object HTMLTableRowElement]\`.
-          - Добавлена regression-проверка плоских child lists для LuCI tables и warnings.
+            - Нулевые и некорректные Clash delay больше не считаются успешными latency-пробами.
+            - \`success_pct\` вычисляется из фактически принятых samples и остаётся согласованным с latency и score.
+            - Добавлены unit-тесты строгой валидации latency samples.
 
           ## Совместимость
 
