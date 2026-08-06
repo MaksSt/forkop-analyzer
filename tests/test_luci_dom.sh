@@ -18,4 +18,9 @@ if [ "$overview_tables" -ne 1 ] || [ "$results_tables" -ne 2 ]; then
 	exit 1
 fi
 
+for view in "$VIEWS/overview.js" "$VIEWS/results.js"; do
+	grep -q "profile === 'full'" "$view"
+	grep -q 'Скорость скачивания измеряется только в профиле Full' "$view"
+done
+
 printf 'LuCI DOM contract tests passed.\n'

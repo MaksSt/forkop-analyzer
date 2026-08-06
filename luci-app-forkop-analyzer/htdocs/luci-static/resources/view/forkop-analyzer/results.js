@@ -26,6 +26,12 @@ function formatBytes(value) {
 	return (bytes / 1024 / 1024).toFixed(1) + ' MiB';
 }
 
+function downloadMetric(profile, value) {
+	return profile === 'full'
+		? Number(value || 0).toFixed(2)
+		: E('span', { 'title': _('Скорость скачивания измеряется только в профиле Full') }, '—');
+}
+
 return view.extend({
 	load: function() {
 		return callResults();
@@ -64,7 +70,7 @@ return view.extend({
 					E('td', {}, Number(item.latency_ms || 0).toFixed(1)),
 					E('td', {}, Number(item.jitter_ms || 0).toFixed(1)),
 					E('td', {}, Number(item.success_pct || 0).toFixed(1)),
-					E('td', {}, Number(item.download_mbps || 0).toFixed(2)),
+					E('td', {}, downloadMetric(job.profile, item.download_mbps)),
 					E('td', {}, String(item.score || 0)),
 					E('td', {}, item.error || '-')
 				]);

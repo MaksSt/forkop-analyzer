@@ -29,6 +29,12 @@ function metric(value, suffix) {
 	return isFinite(number) ? number.toFixed(number < 10 ? 2 : 1) + (suffix || '') : '-';
 }
 
+function downloadMetric(profile, value) {
+	return profile === 'full'
+		? metric(value, ' Mbit/s')
+		: E('span', { 'title': _('Скорость скачивания измеряется только в профиле Full') }, '—');
+}
+
 function statusBadge(ok, yes, no) {
 	return E('span', { 'class': 'forkop-analyzer-status ' + (ok ? 'ok' : 'error') }, ok ? yes : no);
 }
@@ -83,7 +89,7 @@ return view.extend({
 				E('td', {}, metric(item.latency_ms, ' ms')),
 				E('td', {}, metric(item.jitter_ms, ' ms')),
 				E('td', {}, metric(item.success_pct, '%')),
-				E('td', {}, metric(item.download_mbps, ' Mbit/s')),
+				E('td', {}, downloadMetric(job.profile, item.download_mbps)),
 				E('td', { 'class': 'forkop-analyzer-score' }, String(item.score || 0)),
 				E('td', {}, item.error || '-'),
 				E('td', {}, actions)

@@ -19,7 +19,7 @@ on:
       release_tag:
         description: GitHub Release tag
         required: true
-        default: v0.1.3
+        default: v0.1.4
   push:
     tags:
       - "v*"
@@ -38,7 +38,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      PROJECT_VERSION: "0.1.3"
+      PROJECT_VERSION: "0.1.4"
       PROJECT_RELEASE: "1"
       FORKOP_SOURCE_SHA: "dd483297be0ac4e52bb8f482e2640238b75af532"
 
@@ -230,9 +230,9 @@ jobs:
           cat > "$release_notes" <<EOF
           ## Изменения
 
-            - Исправлена агрегация latency samples под BusyBox awk на OpenWrt.
-            - Реальные задержка, диапазон и jitter больше не преобразуются в нули.
-            - Добавлены regression-тесты многоточечных, одиночных и пустых sample sets.
+            - Quick и Gaming больше не показывают \`0.00 Mbit/s\` как измеренную скорость.
+            - Неизмеряемый throughput отображается как \`—\` с пояснением, что download-тест доступен только в Full.
+            - Добавлена regression-проверка профильно-зависимого отображения download metric.
 
           ## Совместимость
 

@@ -2,7 +2,7 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-EXPECTED_VERSION='0.1.3'
+EXPECTED_VERSION='0.1.4'
 EXPECTED_RELEASE='1'
 EXPECTED_TAG="v$EXPECTED_VERSION"
 
