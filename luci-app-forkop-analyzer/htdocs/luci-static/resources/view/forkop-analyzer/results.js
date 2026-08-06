@@ -81,9 +81,8 @@ return view.extend({
 						E('th', {}, _('Скачивание, Mbit/s')),
 						E('th', {}, _('Score')),
 						E('th', {}, _('Ошибка'))
-					]),
-					rows
-				]))
+					])
+				].concat(rows)))
 			]);
 		});
 	},
@@ -126,9 +125,8 @@ return view.extend({
 					E('th', {}, _('Лучший узел')),
 					E('th', {}, _('Трафик')),
 					E('th', {}, '')
-				]),
-				rows
-			])),
+				])
+			].concat(rows))),
 			this.detailTarget
 		]);
 	},

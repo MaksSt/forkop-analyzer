@@ -19,7 +19,7 @@ on:
       release_tag:
         description: GitHub Release tag
         required: true
-        default: v0.1.0
+        default: v0.1.1
   push:
     tags:
       - "v*"
@@ -38,7 +38,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      PROJECT_VERSION: "0.1.0"
+      PROJECT_VERSION: "0.1.1"
       PROJECT_RELEASE: "1"
       FORKOP_SOURCE_SHA: "dd483297be0ac4e52bb8f482e2640238b75af532"
 
@@ -230,10 +230,9 @@ jobs:
           cat > "$release_notes" <<EOF
           ## Изменения
 
-          - Первый стабильный релиз Forkop Analyzer.
-          - Quick/Gaming latency benchmark через Forkop Clash API.
-          - Изолированный Full download benchmark без изменения production selector.
-          - LuCI UI, асинхронные jobs, JSON/CSV export и traffic limits.
+          - Исправлено отображение строк в таблицах Overview, Results и деталей job.
+          - DOM-узлы больше не преобразуются в текст вида \`[object HTMLTableRowElement]\`.
+          - Добавлена regression-проверка плоских child lists для LuCI tables и warnings.
 
           ## Совместимость
 

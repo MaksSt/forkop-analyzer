@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 - 2026-08-06
+
+- Исправлено отображение строк таблиц Overview, Results и деталей job в LuCI.
+- Устранено преобразование массивов DOM-узлов в `[object HTMLTableRowElement]`.
+- Добавлена regression-проверка структуры LuCI child lists.
+
 ## 0.1.0 - 2026-08-06
 
 - Первый backend APK с Forkop compatibility adapter, async benchmark engine и JSON/CSV results.

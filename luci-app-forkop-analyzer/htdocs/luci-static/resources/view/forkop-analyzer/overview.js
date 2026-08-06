@@ -104,9 +104,8 @@ return view.extend({
 				E('th', {}, _('Score')),
 				E('th', {}, _('Ошибка')),
 				E('th', {}, '')
-			]),
-			rows
-		]));
+			])
+		].concat(rows)));
 	},
 
 	renderJob: function(job) {
@@ -215,7 +214,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('view/forkop-analyzer/forkop-analyzer.css') }),
 			E('h2', {}, _('Forkop Analyzer')),
 			E('p', {}, _('Безопасное сравнение VPN-узлов Forkop без автоматического переключения production selector.')),
-			warnings,
+			warnings.length ? E('div', {}, warnings) : '',
 			E('div', { 'class': 'forkop-analyzer-grid' }, [
 				E('div', { 'class': 'forkop-analyzer-card' }, [
 					E('h3', {}, _('Forkop')),
