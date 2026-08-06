@@ -97,7 +97,10 @@ jobs:
           sdk_dir_url="${SDK_URL%/*}"
           curl --fail --location --proto '=https' --tlsv1.2 -o "$sdk_name" "$SDK_URL"
           curl --fail --location --proto '=https' --tlsv1.2 -o sha256sums "$sdk_dir_url/sha256sums"
-          grep "  $sdk_name$" sha256sums > sdk.sha256
+          awk -v name="$sdk_name" '
+            $2 == name || $2 == "*" name { print $1 "  " name; found = 1 }
+            END { if (!found) exit 1 }
+          ' sha256sums > sdk.sha256
           sha256sum -c sdk.sha256
           tar --use-compress-program=unzstd -xf "$sdk_name"
           sdk_dir="$(find "$PWD" -maxdepth 1 -type d -name 'openwrt-sdk-*' -print -quit)"
