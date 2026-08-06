@@ -142,7 +142,7 @@ jobs:
         run: |
           set -euo pipefail
           make -C "$SDK_DIR" -j"$(nproc)" package/ucode/host/compile V=s
-          ucode_bin="$(find "$SDK_DIR/staging_dir/host/bin" -type f -name ucode -print -quit)"
+          ucode_bin="$SDK_DIR/staging_dir/hostpkg/bin/ucode"
           test -x "$ucode_bin"
           index=0
           while IFS= read -r source; do
