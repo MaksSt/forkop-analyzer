@@ -12,7 +12,7 @@ tests/run.sh
 
 ## SDK
 
-Основная integration check выполняется `.github/workflows/build-openwrt-apk.yml` на official OpenWrt 25.12.4 SDK. Workflow проверяет SHA-256 SDK, pin Forkop, наличие двух APK, contents, `.PKGINFO` dependencies и deterministic release names.
+Основная integration check выполняется `.github/workflows/build-openwrt-apk.yml` на official OpenWrt 25.12.4 SDK. Workflow проверяет SHA-256 SDK, pin Forkop, наличие двух APK, APK v3 metadata/dependencies через штатный `apk adbdump`, contents через `apk extract` и deterministic release names.
 
 ## Live OpenWrt checklist
 

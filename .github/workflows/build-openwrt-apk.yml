@@ -176,15 +176,30 @@ jobs:
           set -euo pipefail
           backend="dist/forkop-analyzer-${PROJECT_VERSION}-r${PROJECT_RELEASE}.apk"
           luci="dist/luci-app-forkop-analyzer-${PROJECT_VERSION}-r${PROJECT_RELEASE}.apk"
-          tar --ignore-zeros -tzf "$backend" > "$RUNNER_TEMP/backend.contents"
-          tar --ignore-zeros -tzf "$luci" > "$RUNNER_TEMP/luci.contents"
-          grep -q 'usr/lib/forkop-analyzer/forkop_adapter.uc' "$RUNNER_TEMP/backend.contents"
-          grep -q 'usr/share/rpcd/ucode/forkop-analyzer' "$RUNNER_TEMP/backend.contents"
-          grep -q 'luci-static/resources/view/forkop-analyzer/overview.js' "$RUNNER_TEMP/luci.contents"
-          tar --ignore-zeros -xOzf "$backend" .PKGINFO > "$RUNNER_TEMP/backend.pkginfo"
-          tar --ignore-zeros -xOzf "$luci" .PKGINFO > "$RUNNER_TEMP/luci.pkginfo"
-          grep -q 'depend = forkop' "$RUNNER_TEMP/backend.pkginfo"
-          grep -q 'depend = forkop-analyzer' "$RUNNER_TEMP/luci.pkginfo"
+          apk_bin="$SDK_DIR/staging_dir/host/bin/apk"
+          test -x "$apk_bin"
+
+          "$apk_bin" adbdump --format json "$backend" > "$RUNNER_TEMP/backend.metadata.json"
+          "$apk_bin" adbdump --format json "$luci" > "$RUNNER_TEMP/luci.metadata.json"
+          jq -e --arg version "${PROJECT_VERSION}-r${PROJECT_RELEASE}" '
+            .info.name == "forkop-analyzer" and
+            .info.version == $version and
+            .info.arch == "all" and
+            (.info.depends | index("forkop") != null)
+          ' "$RUNNER_TEMP/backend.metadata.json" >/dev/null
+          jq -e --arg version "${PROJECT_VERSION}-r${PROJECT_RELEASE}" '
+            .info.name == "luci-app-forkop-analyzer" and
+            .info.version == $version and
+            .info.arch == "all" and
+            (.info.depends | index("forkop-analyzer") != null)
+          ' "$RUNNER_TEMP/luci.metadata.json" >/dev/null
+
+          mkdir -p "$RUNNER_TEMP/backend.root" "$RUNNER_TEMP/luci.root"
+          "$apk_bin" extract --no-chown --destination "$RUNNER_TEMP/backend.root" "$backend"
+          "$apk_bin" extract --no-chown --destination "$RUNNER_TEMP/luci.root" "$luci"
+          test -f "$RUNNER_TEMP/backend.root/usr/lib/forkop-analyzer/forkop_adapter.uc"
+          test -f "$RUNNER_TEMP/backend.root/usr/share/rpcd/ucode/forkop-analyzer"
+          test -f "$RUNNER_TEMP/luci.root/www/luci-static/resources/view/forkop-analyzer/overview.js"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

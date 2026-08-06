@@ -83,6 +83,7 @@ fi
 [ -x /usr/bin/forkop ] || fail 'Forkop is not installed'
 command -v wget >/dev/null 2>&1 || fail 'wget is required'
 command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum is required'
+command -v jsonfilter >/dev/null 2>&1 || fail 'jsonfilter is required'
 
 TMP_DIR="$(mktemp -d /tmp/forkop-analyzer-install.XXXXXX)"
 chmod 700 "$TMP_DIR"
@@ -131,7 +132,9 @@ grep "  $LUCI_ASSET\$" "$TMP_DIR/SHA256SUMS" >> "$TMP_DIR/SHA256SUMS.selected" |
 ) || fail 'SHA-256 verification failed'
 
 for package in "$TMP_DIR/$BACKEND_ASSET" "$TMP_DIR/$LUCI_ASSET"; do
-	package_arch="$(tar --ignore-zeros -xOzf "$package" .PKGINFO 2>/dev/null | sed -n 's/^arch = //p' | sed -n '1p')"
+	apk adbdump --format json "$package" > "$TMP_DIR/package-metadata.json" \
+		|| fail "unable to read package metadata: $package"
+	package_arch="$(jsonfilter -q -i "$TMP_DIR/package-metadata.json" -e '@.info.arch')"
 	case "$package_arch" in
 		all|noarch) ;;
 		'') fail "unable to read package architecture: $package" ;;
