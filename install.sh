@@ -2,8 +2,8 @@
 set -eu
 
 GITHUB_REPO='MaksSt/forkop-analyzer'
-DEFAULT_VERSION='v0.1.1'
-PACKAGE_VERSION='0.1.1'
+DEFAULT_VERSION='v0.1.2'
+PACKAGE_VERSION='0.1.2'
 PACKAGE_RELEASE='1'
 BACKEND_ASSET="forkop-analyzer-${PACKAGE_VERSION}-r${PACKAGE_RELEASE}.apk"
 LUCI_ASSET="luci-app-forkop-analyzer-${PACKAGE_VERSION}-r${PACKAGE_RELEASE}.apk"
@@ -21,7 +21,7 @@ Usage: install.sh [OPTIONS]
 Install Forkop Analyzer on OpenWrt with apk.
 
 Options:
-  --version TAG   Install a specific release tag, for example v0.1.1
+  --version TAG   Install a specific release tag, for example v0.1.2
   --prerelease    Allow the newest release, including a prerelease
   --no-start      Install packages without restarting services
   --uninstall     Remove Forkop Analyzer packages

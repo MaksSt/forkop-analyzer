@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=forkop-analyzer
-PKG_VERSION:=0.1.1
+PKG_VERSION:=0.1.2
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=MaksSt
@@ -74,6 +74,7 @@ define Package/forkop-analyzer/install
 	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/adapter_cli.uc $(1)/usr/lib/forkop-analyzer/adapter_cli.uc
 	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/result_store.uc $(1)/usr/lib/forkop-analyzer/result_store.uc
 	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/scoring.sh $(1)/usr/lib/forkop-analyzer/scoring.sh
+	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/latency.sh $(1)/usr/lib/forkop-analyzer/latency.sh
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/ucode
 	$(INSTALL_DATA) ./files/usr/share/rpcd/ucode/forkop-analyzer $(1)/usr/share/rpcd/ucode/forkop-analyzer

@@ -13,11 +13,13 @@ LIB_DIR='/usr/lib/forkop-analyzer'
 ADAPTER="$LIB_DIR/adapter_cli.uc"
 STORE="$LIB_DIR/result_store.uc"
 SCORING="$LIB_DIR/scoring.sh"
+LATENCY="$LIB_DIR/latency.sh"
 STATE_PATH="$RUNTIME_DIR/$JOB_ID.json"
 RESULT_PATH="$RESULTS_DIR/$JOB_ID.json"
 JOB_TMP="$TMP_ROOT/$JOB_ID"
 
 . "$SCORING"
+. "$LATENCY"
 
 adapter() {
 	ucode -L "$LIB_DIR" "$ADAPTER" "$@"
@@ -147,19 +149,18 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 	SAMPLES="$JOB_TMP/samples-$INDEX.txt"
 	: > "$SAMPLES"
 	ATTEMPTS=0
-	SUCCESSFUL=0
 	while [ "$ATTEMPTS" -lt "$REPEATS" ]; do
 		[ -f "$RUNTIME_DIR/$JOB_ID.cancel" ] && on_signal
 		ATTEMPTS=$((ATTEMPTS + 1))
 		DELAY_FILE="$JOB_TMP/delay-$INDEX-$ATTEMPTS.json"
 		if adapter clash-api get_proxy_latency "$NODE" "$TIMEOUT_MS" > "$DELAY_FILE" 2>/dev/null; then
 			delay="$(jsonfilter -q -i "$DELAY_FILE" -e '@.delay')"
-			case "$delay" in
-				''|*[!0-9.]* ) ;;
-				*) printf '%s\n' "$delay" >> "$SAMPLES"; SUCCESSFUL=$((SUCCESSFUL + 1)) ;;
-			esac
+			if latency_sample_is_valid "$delay" "$TIMEOUT_MS"; then
+				printf '%s\n' "$delay" >> "$SAMPLES"
+			fi
 		fi
 	done
+	SUCCESSFUL="$(latency_sample_count "$SAMPLES")"
 
 	if [ "$SUCCESSFUL" -gt 0 ]; then
 		metrics="$(awk 'NR == 1 { min=$1; max=$1; prev=$1 } {
@@ -178,7 +179,7 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 		JITTER=1000
 		ERROR='All latency samples failed'
 	fi
-	SUCCESS_PCT="$(awk -v ok="$SUCCESSFUL" -v total="$ATTEMPTS" 'BEGIN { printf "%.2f", total > 0 ? ok * 100 / total : 0 }')"
+	SUCCESS_PCT="$(latency_success_percentage "$SUCCESSFUL" "$ATTEMPTS")"
 	DOWNLOAD_MBPS=0
 
 	if [ "$PROFILE" = 'full' ] && [ "$SUCCESSFUL" -gt 0 ]; then

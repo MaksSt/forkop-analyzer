@@ -19,7 +19,7 @@ on:
       release_tag:
         description: GitHub Release tag
         required: true
-        default: v0.1.1
+        default: v0.1.2
   push:
     tags:
       - "v*"
@@ -38,7 +38,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      PROJECT_VERSION: "0.1.1"
+      PROJECT_VERSION: "0.1.2"
       PROJECT_RELEASE: "1"
       FORKOP_SOURCE_SHA: "dd483297be0ac4e52bb8f482e2640238b75af532"
 
