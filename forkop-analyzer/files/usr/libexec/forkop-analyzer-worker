@@ -60,7 +60,9 @@ release_job() {
 	active=''
 	[ -f "$RUNTIME_DIR/active_job" ] && active="$(sed -n '1p' "$RUNTIME_DIR/active_job")"
 	if [ "$active" = "$JOB_ID" ]; then
-		rm -f "$RUNTIME_DIR/active_job" "$RUNTIME_DIR/$JOB_ID.pid" "$RUNTIME_DIR/$JOB_ID.cancel"
+		printf '%s\n' "$JOB_ID" > "$RUNTIME_DIR/last_job"
+		chmod 600 "$RUNTIME_DIR/last_job"
+		rm -f "$RUNTIME_DIR/active_job" "$RUNTIME_DIR/$JOB_ID.pid" "$RUNTIME_DIR/$JOB_ID.cancel" "$STATE_PATH"
 		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
 	fi
 }
@@ -114,6 +116,12 @@ MAX_TRAFFIC_MB="$(uci_number max_traffic_mb 100)"
 MAX_TRAFFIC_BYTES=$((MAX_TRAFFIC_MB * 1024 * 1024))
 DOWNLOAD_URL="$(uci -q get forkop-analyzer.main.download_url)"
 [ -n "$DOWNLOAD_URL" ] || DOWNLOAD_URL='https://speed.cloudflare.com/__down?bytes=5000000'
+if [ "$PROFILE" = 'full' ]; then
+	case "$DOWNLOAD_URL" in
+		https://*) ;;
+		*) finish_job failed 'Full download endpoint must use HTTPS'; exit 1 ;;
+	esac
+fi
 
 case "$PROFILE" in
 	quick) REPEATS="$QUICK_REPEATS" ;;
@@ -187,14 +195,19 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 				sleep 1
 				if kill -0 "$ISOLATED_PID" 2>/dev/null; then
 					DOWNLOAD_RESULT="$JOB_TMP/download-$INDEX.txt"
+					download_ok=0
 					if curl -fsS --proxy "socks5h://127.0.0.1:$port" \
 						--connect-timeout 10 --max-time 45 --max-filesize "$DOWNLOAD_BYTES" \
 						-o /dev/null -w '%{speed_download} %{size_download}' \
 						"$DOWNLOAD_URL" > "$DOWNLOAD_RESULT" 2>/dev/null; then
-						speed="$(awk '{print $1}' "$DOWNLOAD_RESULT")"
-						size="$(awk '{print int($2)}' "$DOWNLOAD_RESULT")"
+						download_ok=1
+					fi
+					speed="$(awk '{print $1}' "$DOWNLOAD_RESULT")"
+					size="$(awk '{print int($2)}' "$DOWNLOAD_RESULT")"
+					case "$size" in ''|*[!0-9]*) size=0 ;; esac
+					TRAFFIC_BYTES=$((TRAFFIC_BYTES + size))
+					if [ "$download_ok" -eq 1 ]; then
 						DOWNLOAD_MBPS="$(awk -v bytes_per_second="$speed" 'BEGIN { printf "%.3f", bytes_per_second * 8 / 1000000 }')"
-						TRAFFIC_BYTES=$((TRAFFIC_BYTES + size))
 					else
 						ERROR='Isolated throughput request failed'
 					fi

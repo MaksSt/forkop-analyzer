@@ -30,6 +30,10 @@ function write_atomic(path, value) {
 	let temporary = sprintf('%s.%d.%d.tmp', path, stamp[0], stamp[1]);
 	if (fs.writefile(temporary, sprintf('%J\n', value)) == null)
 		return false;
+	if (!fs.chmod(temporary, 384)) {
+		fs.unlink(temporary);
+		return false;
+	}
 	if (!fs.rename(temporary, path)) {
 		fs.unlink(temporary);
 		return false;

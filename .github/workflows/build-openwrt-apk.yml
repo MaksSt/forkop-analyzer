@@ -140,12 +140,12 @@ jobs:
       - name: Build backend APK
         run: |
           cd "$SDK_DIR"
-          make package/forkop-analyzer/compile V=s
+          make -j"$(nproc)" package/forkop-analyzer/compile V=s
 
       - name: Build LuCI APK
         run: |
           cd "$SDK_DIR"
-          make package/luci-app-forkop-analyzer/compile V=s
+          make -j"$(nproc)" package/luci-app-forkop-analyzer/compile V=s
 
       - name: Compile-check ucode with SDK host tool
         shell: bash
@@ -217,10 +217,43 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          release_notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$release_notes" <<EOF
+          ## Изменения
+
+          - Первый стабильный релиз Forkop Analyzer.
+          - Quick/Gaming latency benchmark через Forkop Clash API.
+          - Изолированный Full download benchmark без изменения production selector.
+          - LuCI UI, асинхронные jobs, JSON/CSV export и traffic limits.
+
+          ## Совместимость
+
+          - OpenWrt ${OPENWRT_VERSION} и ветка 25.12.x с apk.
+          - Forkop commit ${FORKOP_SOURCE_SHA} (version 1.0.5 contract).
+
+          ## Обновление
+
+          Скачайте оба APK и выполните:
+
+          \`\`\`sh
+          apk add --allow-untrusted --upgrade \\
+            /tmp/forkop-analyzer.apk \\
+            /tmp/luci-app-forkop-analyzer.apk
+          /etc/init.d/forkop-analyzer restart
+          /etc/init.d/rpcd restart
+          \`\`\`
+
+          > Full mode создаёт реальный benchmark-трафик. Перед запуском проверьте \`max_traffic_mb\`, \`full_max_nodes\` и условия VPN-провайдера.
+          EOF
+
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
               --title "Forkop Analyzer $PROJECT_VERSION" \
-              --notes "OpenWrt $OPENWRT_VERSION APK packages. Tested against Forkop $FORKOP_SOURCE_SHA. Full mode generates benchmark traffic."
+              --notes-file "$release_notes"
+          else
+            gh release edit "$RELEASE_TAG" \
+              --title "Forkop Analyzer $PROJECT_VERSION" \
+              --notes-file "$release_notes"
           fi
           gh release upload "$RELEASE_TAG" dist/*.apk dist/SHA256SUMS --clobber

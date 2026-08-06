@@ -72,6 +72,12 @@ done
 [ -r /etc/openwrt_release ] || fail 'OpenWrt was not detected'
 command -v apk >/dev/null 2>&1 || fail 'apk is required; opkg-only systems are not supported'
 
+openwrt_release="$(sed -n "s/^DISTRIB_RELEASE=['\"]\([^'\"]*\)['\"]$/\1/p" /etc/openwrt_release | sed -n '1p')"
+case "$openwrt_release" in
+	25.12.*) ;;
+	*) fail "unsupported OpenWrt release: ${openwrt_release:-unknown}; expected 25.12.x" ;;
+esac
+
 if [ "$UNINSTALL" -eq 1 ]; then
 	[ "$NO_START" -eq 1 ] || /etc/init.d/forkop-analyzer stop >/dev/null 2>&1 || true
 	apk del luci-app-forkop-analyzer forkop-analyzer

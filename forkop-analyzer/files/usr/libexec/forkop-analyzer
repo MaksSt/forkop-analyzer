@@ -74,6 +74,55 @@ active_job() {
 	printf '%s\n' "$job"
 }
 
+path_is_older_than() {
+	path="$1"
+	seconds="$2"
+	[ -e "$path" ] || return 1
+	mtime="$(stat -c '%Y' "$path" 2>/dev/null)"
+	now="$(date '+%s')"
+	case "$mtime:$now" in *[!0-9:]*) return 1 ;; esac
+	[ $((now - mtime)) -ge "$seconds" ]
+}
+
+recover_stale_job() {
+	if [ ! -f "$RUNTIME_DIR/active_job" ]; then
+		path_is_older_than "$RUNTIME_DIR/active.lock" 120 && rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		return 0
+	fi
+
+	job="$(read_active_job 2>/dev/null)" || {
+		rm -f "$RUNTIME_DIR/active_job"
+		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		return 0
+	}
+	worker_is_active "$job" && return 0
+
+	state_path="$RUNTIME_DIR/$job.json"
+	result_path="$RESULTS_DIR/$job.json"
+	if [ -f "$result_path" ]; then
+		started_at="$(jsonfilter -q -i "$result_path" -e '@.started_at')"
+		now="$(date '+%s')"
+		case "$started_at:$now" in
+			*[!0-9:]*) ;;
+			*) [ $((now - started_at)) -lt 30 ] && return 0 ;;
+		esac
+		selector="$(jsonfilter -q -i "$result_path" -e '@.selector')"
+		original_node="$(jsonfilter -q -i "$result_path" -e '@.selector_state.original')"
+		final_node=''
+		if [ -n "$selector" ]; then
+			final_node="$(adapter current-node "$selector" 2>/dev/null | jsonfilter -q -e '@.data.outbound_tag')"
+		fi
+		unchanged=0
+		[ "$final_node" = "$original_node" ] && unchanged=1
+		store finish "$state_path" "$result_path" failed 'Benchmark worker is no longer running' "$final_node" "$unchanged" 0 >/dev/null 2>&1 || true
+		printf '%s\n' "$job" > "$RUNTIME_DIR/last_job"
+		chmod 600 "$RUNTIME_DIR/last_job"
+	fi
+
+	rm -f "$RUNTIME_DIR/active_job" "$RUNTIME_DIR/$job.pid" "$RUNTIME_DIR/$job.cancel" "$state_path"
+	rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+}
+
 configured_selector() {
 	uci -q get "$CONFIG.main.selector"
 }
@@ -93,6 +142,7 @@ start_benchmark() {
 	esac
 
 	ensure_dirs || return 1
+	recover_stale_job
 	capabilities_file="$TMP_ROOT/capabilities-$$.json"
 	adapter capabilities > "$capabilities_file" 2>/dev/null || true
 	clash_available="$(jsonfilter -q -i "$capabilities_file" -e '@.data.clash_api_available')"
@@ -185,7 +235,17 @@ cancel_benchmark() {
 show_status() {
 	job="$1"
 	if [ -z "$job" ]; then
-		job="$(read_active_job 2>/dev/null)" || job=''
+		ensure_dirs
+		recover_stale_job
+		job="$(active_job 2>/dev/null)" || job=''
+		if [ -z "$job" ] && [ -f "$RUNTIME_DIR/last_job" ]; then
+			last_job="$(sed -n '1p' "$RUNTIME_DIR/last_job")"
+			if valid_job_id "$last_job" && [ -f "$RESULTS_DIR/$last_job.json" ]; then
+				job="$last_job"
+			else
+				rm -f "$RUNTIME_DIR/last_job"
+			fi
+		fi
 	fi
 	if [ -z "$job" ]; then
 		printf '{"success":true,"data":{"status":"idle","running":false}}\n'
