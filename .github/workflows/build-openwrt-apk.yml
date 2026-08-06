@@ -204,8 +204,8 @@ jobs:
           ' "$RUNNER_TEMP/luci.metadata.json" >/dev/null
 
           mkdir -p "$RUNNER_TEMP/backend.root" "$RUNNER_TEMP/luci.root"
-          "$apk_bin" extract --no-chown --destination "$RUNNER_TEMP/backend.root" "$backend"
-          "$apk_bin" extract --no-chown --destination "$RUNNER_TEMP/luci.root" "$luci"
+          "$apk_bin" extract --allow-untrusted --no-chown --destination "$RUNNER_TEMP/backend.root" "$backend"
+          "$apk_bin" extract --allow-untrusted --no-chown --destination "$RUNNER_TEMP/luci.root" "$luci"
           test -f "$RUNNER_TEMP/backend.root/usr/lib/forkop-analyzer/forkop_adapter.uc"
           test -f "$RUNNER_TEMP/backend.root/usr/share/rpcd/ucode/forkop-analyzer"
           test -f "$RUNNER_TEMP/luci.root/www/luci-static/resources/view/forkop-analyzer/overview.js"
