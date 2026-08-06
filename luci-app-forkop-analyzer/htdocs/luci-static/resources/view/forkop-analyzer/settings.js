@@ -20,7 +20,11 @@ return view.extend({
 		option.datatype = 'range(1,20)';
 		option.default = '3';
 
-		option = section.option(form.Value, 'gaming_repeats', _('Gaming/Full: число проб'));
+		option = section.option(form.Value, 'gaming_repeats', _('Gaming: число проб'));
+		option.datatype = 'range(2,50)';
+		option.default = '20';
+
+		option = section.option(form.Value, 'full_repeats', _('Full: число latency-проб'));
 		option.datatype = 'range(2,50)';
 		option.default = '8';
 

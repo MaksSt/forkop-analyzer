@@ -109,7 +109,8 @@ adapter benchmark-nodes-lines "$SELECTOR" > "$NODES_FILE" || {
 
 TIMEOUT_MS="$(uci_number latency_timeout_ms 5000)"
 QUICK_REPEATS="$(uci_number quick_repeats 3)"
-GAMING_REPEATS="$(uci_number gaming_repeats 8)"
+GAMING_REPEATS="$(uci_number gaming_repeats 20)"
+FULL_REPEATS="$(uci_number full_repeats 8)"
 FULL_MAX_NODES="$(uci_number full_max_nodes 10)"
 PORT_BASE="$(uci_number isolated_port_base 19080)"
 DOWNLOAD_BYTES="$(uci_number download_bytes 5000000)"
@@ -127,7 +128,8 @@ fi
 
 case "$PROFILE" in
 	quick) REPEATS="$QUICK_REPEATS" ;;
-	gaming|full) REPEATS="$GAMING_REPEATS" ;;
+	gaming) REPEATS="$GAMING_REPEATS" ;;
+	full) REPEATS="$FULL_REPEATS" ;;
 	*) finish_job failed 'Invalid benchmark profile'; exit 1 ;;
 esac
 [ "$REPEATS" -gt 0 ] || REPEATS=1
@@ -168,15 +170,20 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 		LATENCY_MIN="$(printf '%s\n' "$metrics" | awk '{print $2}')"
 		LATENCY_MAX="$(printf '%s\n' "$metrics" | awk '{print $3}')"
 		JITTER="$(printf '%s\n' "$metrics" | awk '{print $4}')"
+		LATENCY_P95="$(printf '%s\n' "$metrics" | awk '{print $5}')"
+		LATENCY_SPIKES="$(printf '%s\n' "$metrics" | awk '{print $6}')"
 		ERROR=''
 	else
 		LATENCY=1000
 		LATENCY_MIN=1000
 		LATENCY_MAX=1000
 		JITTER=1000
+		LATENCY_P95=1000
+		LATENCY_SPIKES=0
 		ERROR='All latency samples failed'
 	fi
 	SUCCESS_PCT="$(latency_success_percentage "$SUCCESSFUL" "$ATTEMPTS")"
+	LOSS_PCT="$(latency_loss_percentage "$SUCCESSFUL" "$ATTEMPTS")"
 	DOWNLOAD_MBPS=0
 
 	if [ "$PROFILE" = 'full' ] && [ "$SUCCESSFUL" -gt 0 ]; then
@@ -221,7 +228,7 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 	fi
 
 	SCORE="$(score_profile "$PROFILE" "$LATENCY" "$JITTER" "$SUCCESS_PCT" "$DOWNLOAD_MBPS" "$TARGET_DOWNLOAD_MBPS")" || SCORE=0
-	store append "$STATE_PATH" "$RESULT_PATH" "$NODE" "$NODE_TYPE" "$LATENCY" "$LATENCY_MIN" "$LATENCY_MAX" "$JITTER" "$SUCCESS_PCT" "$SUCCESSFUL" "$ATTEMPTS" "$DOWNLOAD_MBPS" "$SCORE" "$ERROR" >/dev/null 2>&1 || true
+	store append "$STATE_PATH" "$RESULT_PATH" "$NODE" "$NODE_TYPE" "$LATENCY" "$LATENCY_MIN" "$LATENCY_MAX" "$JITTER" "$SUCCESS_PCT" "$LOSS_PCT" "$LATENCY_P95" "$LATENCY_SPIKES" "$SUCCESSFUL" "$ATTEMPTS" "$DOWNLOAD_MBPS" "$SCORE" "$ERROR" >/dev/null 2>&1 || true
 	COMPLETED=$((COMPLETED + 1))
 	store progress "$STATE_PATH" "$RESULT_PATH" '' "$COMPLETED" "$TRAFFIC_BYTES" >/dev/null 2>&1 || true
 done < "$NODES_FILE"

@@ -110,11 +110,14 @@ function append_result(state_path, result_path) {
 		latency_max_ms: as_number(ARGV[7]),
 		jitter_ms: as_number(ARGV[8]),
 		success_pct: as_number(ARGV[9]),
-		successful_samples: int(ARGV[10] || 0),
-		attempts: int(ARGV[11] || 0),
-		download_mbps: as_number(ARGV[12]),
-		score: int(ARGV[13] || 0),
-		error: as_string(ARGV[14])
+		loss_pct: as_number(ARGV[10]),
+		latency_p95_ms: as_number(ARGV[11]),
+		latency_spikes: int(ARGV[12] || 0),
+		successful_samples: int(ARGV[13] || 0),
+		attempts: int(ARGV[14] || 0),
+		download_mbps: as_number(ARGV[15]),
+		score: int(ARGV[16] || 0),
+		error: as_string(ARGV[17])
 	};
 	if (type(value.results) != 'array')
 		value.results = [];
@@ -185,13 +188,14 @@ function export_csv(path) {
 	let value = read_json(path);
 	if (value == null)
 		return 1;
-	print('job_id,profile,selector,tag,type,latency_ms,latency_min_ms,latency_max_ms,jitter_ms,success_pct,download_mbps,score,error\n');
+	print('job_id,profile,selector,tag,type,latency_ms,latency_min_ms,latency_max_ms,jitter_ms,latency_p95_ms,latency_spikes,success_pct,loss_pct,download_mbps,score,error\n');
 	for (let item in (type(value.results) == 'array' ? value.results : [])) {
 		print(join(',', [
 			csv_cell(value.job_id), csv_cell(value.profile), csv_cell(value.selector),
 			csv_cell(item.tag), csv_cell(item.type), as_string(item.latency_ms),
 			as_string(item.latency_min_ms), as_string(item.latency_max_ms),
-			as_string(item.jitter_ms), as_string(item.success_pct),
+			as_string(item.jitter_ms), as_string(item.latency_p95_ms), as_string(item.latency_spikes),
+			as_string(item.success_pct), as_string(item.loss_pct),
 			as_string(item.download_mbps), as_string(item.score), csv_cell(item.error)
 		]), '\n');
 	}

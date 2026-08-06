@@ -35,6 +35,16 @@ function downloadMetric(profile, value) {
 		: E('span', { 'title': _('Скорость скачивания измеряется только в профиле Full') }, '—');
 }
 
+function optionalMetric(value, suffix) {
+	return value == null || value === '' ? '—' : metric(value, suffix);
+}
+
+function lossMetric(item) {
+	if (item.loss_pct != null)
+		return metric(item.loss_pct, '%');
+	return item.success_pct == null ? '—' : metric(100 - Number(item.success_pct), '%');
+}
+
 function statusBadge(ok, yes, no) {
 	return E('span', { 'class': 'forkop-analyzer-status ' + (ok ? 'ok' : 'error') }, ok ? yes : no);
 }
@@ -87,8 +97,11 @@ return view.extend({
 				E('td', {}, item.tag),
 				E('td', {}, item.type || '-'),
 				E('td', {}, metric(item.latency_ms, ' ms')),
+				E('td', {}, optionalMetric(item.latency_p95_ms, ' ms')),
 				E('td', {}, metric(item.jitter_ms, ' ms')),
+				E('td', {}, item.latency_spikes == null ? '—' : String(item.latency_spikes)),
 				E('td', {}, metric(item.success_pct, '%')),
+				E('td', {}, lossMetric(item)),
 				E('td', {}, downloadMetric(job.profile, item.download_mbps)),
 				E('td', { 'class': 'forkop-analyzer-score' }, String(item.score || 0)),
 				E('td', {}, item.error || '-'),
@@ -97,15 +110,18 @@ return view.extend({
 		});
 
 		if (!rows.length)
-			rows.push(E('tr', {}, E('td', { 'colspan': '9' }, _('Результатов пока нет'))));
+			rows.push(E('tr', {}, E('td', { 'colspan': '12' }, _('Результатов пока нет'))));
 
 		return E('div', { 'class': 'forkop-analyzer-table-wrap' }, E('table', { 'class': 'table' }, [
 			E('tr', { 'class': 'tr table-titles' }, [
 				E('th', {}, _('Узел')),
 				E('th', {}, _('Тип')),
 				E('th', {}, _('Задержка')),
+				E('th', {}, _('P95')),
 				E('th', {}, _('Джиттер')),
+				E('th', {}, _('Скачки')),
 				E('th', {}, _('Успех')),
+				E('th', { 'title': _('Потери latency-запросов через outbound; не ICMP/UDP packet loss') }, _('Потери')),
 				E('th', {}, _('Скачивание')),
 				E('th', {}, _('Score')),
 				E('th', {}, _('Ошибка')),

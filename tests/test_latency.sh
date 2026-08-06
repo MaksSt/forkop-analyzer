@@ -37,16 +37,22 @@ trap 'rm -f "$samples"' EXIT
 printf '15\n20.5\n35\n' > "$samples"
 
 [ "$(latency_sample_count "$samples")" = '3' ]
-[ "$(latency_metrics "$samples")" = '23.500 15.000 35.000 10.000' ]
+[ "$(latency_metrics "$samples")" = '23.500 15.000 35.000 10.000 35.000 0' ]
 [ "$(latency_success_percentage 3 3)" = '100.00' ]
 [ "$(latency_success_percentage 2 3)" = '66.67' ]
 [ "$(latency_success_percentage 0 3)" = '0.00' ]
+[ "$(latency_loss_percentage 3 3)" = '0.00' ]
+[ "$(latency_loss_percentage 2 3)" = '33.33' ]
+[ "$(latency_loss_percentage 0 3)" = '100.00' ]
 
 printf '267\n271\n273\n' > "$samples"
-[ "$(latency_metrics "$samples")" = '270.333 267.000 273.000 3.000' ]
+[ "$(latency_metrics "$samples")" = '270.333 267.000 273.000 3.000 273.000 0' ]
 
 printf '42\n' > "$samples"
-[ "$(latency_metrics "$samples")" = '42.000 42.000 42.000 0.000' ]
+[ "$(latency_metrics "$samples")" = '42.000 42.000 42.000 0.000 42.000 0' ]
+
+printf '100\n105\n110\n400\n' > "$samples"
+[ "$(latency_metrics "$samples")" = '178.750 100.000 400.000 100.000 400.000 1' ]
 
 : > "$samples"
 if latency_metrics "$samples" >/dev/null 2>&1; then

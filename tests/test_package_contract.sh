@@ -30,9 +30,9 @@ printf '%s\n' "$required_files" | while IFS= read -r path; do
 	fi
 done
 
-grep -q '^\s*PKG_VERSION:=0.1.4$' "$ROOT/forkop-analyzer/Makefile"
+grep -q '^\s*PKG_VERSION:=0.1.5$' "$ROOT/forkop-analyzer/Makefile"
 grep -q '^\s*PKG_RELEASE:=1$' "$ROOT/forkop-analyzer/Makefile"
-grep -q '^\s*PKG_VERSION:=0.1.4$' "$ROOT/luci-app-forkop-analyzer/Makefile"
+grep -q '^\s*PKG_VERSION:=0.1.5$' "$ROOT/luci-app-forkop-analyzer/Makefile"
 grep -q '^\s*PKG_RELEASE:=1$' "$ROOT/luci-app-forkop-analyzer/Makefile"
 grep -q 'LUCI_DEPENDS:=+forkop-analyzer' "$ROOT/luci-app-forkop-analyzer/Makefile"
 grep -q 'PKGARCH:=all' "$ROOT/forkop-analyzer/Makefile"

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 - 2026-08-06
+
+- Добавлены `loss_pct`, `latency_p95_ms` и `latency_spikes` для каждого узла.
+- Gaming по умолчанию выполняет 20 latency-проб, Full — 8 проб.
+- Потери измеряются как доля неудачных Clash HTTP delay requests через проверяемый outbound; это не ICMP/UDP packet loss.
+- Расчёты подтверждены реальным Gaming benchmark на OpenWrt 25.12.5.
+
 ## 0.1.4 - 2026-08-06
 
 - Quick и Gaming показывают `—` вместо ложного `0.00 Mbit/s`.

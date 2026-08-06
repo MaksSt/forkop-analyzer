@@ -32,6 +32,16 @@ function downloadMetric(profile, value) {
 		: E('span', { 'title': _('Скорость скачивания измеряется только в профиле Full') }, '—');
 }
 
+function optionalNumber(value, decimals) {
+	return value == null || value === '' ? '—' : Number(value).toFixed(decimals);
+}
+
+function lossMetric(item) {
+	if (item.loss_pct != null)
+		return Number(item.loss_pct).toFixed(1);
+	return item.success_pct == null ? '—' : (100 - Number(item.success_pct)).toFixed(1);
+}
+
 return view.extend({
 	load: function() {
 		return callResults();
@@ -68,8 +78,11 @@ return view.extend({
 				return E('tr', {}, [
 					E('td', {}, item.tag),
 					E('td', {}, Number(item.latency_ms || 0).toFixed(1)),
+					E('td', {}, optionalNumber(item.latency_p95_ms, 1)),
 					E('td', {}, Number(item.jitter_ms || 0).toFixed(1)),
+					E('td', {}, item.latency_spikes == null ? '—' : String(item.latency_spikes)),
 					E('td', {}, Number(item.success_pct || 0).toFixed(1)),
+					E('td', {}, lossMetric(item)),
 					E('td', {}, downloadMetric(job.profile, item.download_mbps)),
 					E('td', {}, String(item.score || 0)),
 					E('td', {}, item.error || '-')
@@ -82,8 +95,11 @@ return view.extend({
 					E('tr', { 'class': 'tr table-titles' }, [
 						E('th', {}, _('Узел')),
 						E('th', {}, _('Задержка, ms')),
+						E('th', {}, _('P95, ms')),
 						E('th', {}, _('Джиттер, ms')),
+						E('th', {}, _('Скачки')),
 						E('th', {}, _('Успех, %')),
+						E('th', { 'title': _('Потери latency-запросов через outbound; не ICMP/UDP packet loss') }, _('Потери, %')),
 						E('th', {}, _('Скачивание, Mbit/s')),
 						E('th', {}, _('Score')),
 						E('th', {}, _('Ошибка'))
