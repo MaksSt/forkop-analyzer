@@ -1,0 +1,29 @@
+#!/bin/sh
+
+RUNTIME_DIR='/var/run/forkop-analyzer'
+CHECK_INTERVAL_SECONDS=300
+
+mkdir -p "$RUNTIME_DIR"
+chmod 700 "$RUNTIME_DIR"
+
+while true; do
+	if [ "$(uci -q get forkop-analyzer.main.schedule_enabled)" = '1' ]; then
+		hour="$(uci -q get forkop-analyzer.main.schedule_hour)"
+		case "$hour" in ''|*[!0-9]*) hour=4 ;; esac
+		[ "$hour" -le 23 ] || hour=4
+		current_hour="$(date '+%H' | sed 's/^0//')"
+		[ -n "$current_hour" ] || current_hour=0
+		today="$(date '+%Y-%m-%d')"
+		last_day=''
+		[ -f "$RUNTIME_DIR/schedule-day" ] && last_day="$(sed -n '1p' "$RUNTIME_DIR/schedule-day")"
+		if [ "$current_hour" = "$hour" ] && [ "$last_day" != "$today" ]; then
+			profile="$(uci -q get forkop-analyzer.main.schedule_profile)"
+			case "$profile" in quick|gaming|full) ;; *) profile=quick ;; esac
+			if /usr/bin/forkop-analyzer start "$profile" >/dev/null 2>&1; then
+				printf '%s\n' "$today" > "$RUNTIME_DIR/schedule-day"
+				chmod 600 "$RUNTIME_DIR/schedule-day"
+			fi
+		fi
+	fi
+	sleep "$CHECK_INTERVAL_SECONDS"
+done

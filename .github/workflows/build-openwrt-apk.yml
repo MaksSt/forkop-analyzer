@@ -1,0 +1,208 @@
+name: build-openwrt-apk
+
+on:
+  workflow_dispatch:
+    inputs:
+      openwrt_version:
+        description: OpenWrt release used for the SDK build
+        required: true
+        default: "25.12.4"
+      sdk_url:
+        description: Official OpenWrt SDK URL
+        required: true
+        default: "https://downloads.openwrt.org/releases/25.12.4/targets/armsr/armv8/openwrt-sdk-25.12.4-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+      upload_release:
+        description: Upload deterministic APK assets to a GitHub Release
+        required: true
+        type: boolean
+        default: true
+      release_tag:
+        description: GitHub Release tag
+        required: true
+        default: v0.1.0
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "forkop-analyzer/**"
+      - "luci-app-forkop-analyzer/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/build-openwrt-apk.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      PROJECT_VERSION: "0.1.0"
+      PROJECT_RELEASE: "1"
+      FORKOP_SOURCE_SHA: "dd483297be0ac4e52bb8f482e2640238b75af532"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve build inputs
+        shell: bash
+        env:
+          INPUT_OPENWRT_VERSION: ${{ inputs.openwrt_version }}
+          INPUT_SDK_URL: ${{ inputs.sdk_url }}
+          INPUT_UPLOAD_RELEASE: ${{ inputs.upload_release }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          openwrt_version="${INPUT_OPENWRT_VERSION:-25.12.4}"
+          sdk_url="${INPUT_SDK_URL:-https://downloads.openwrt.org/releases/25.12.4/targets/armsr/armv8/openwrt-sdk-25.12.4-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst}"
+          upload_release="${INPUT_UPLOAD_RELEASE:-false}"
+          release_tag="${INPUT_RELEASE_TAG:-v${PROJECT_VERSION}}"
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            release_tag="$GITHUB_REF_NAME"
+            upload_release=true
+          fi
+
+          [[ "$sdk_url" == "https://downloads.openwrt.org/releases/${openwrt_version}/"* ]]
+          [[ "$release_tag" == "v${PROJECT_VERSION}" ]]
+
+          echo "OPENWRT_VERSION=$openwrt_version" >> "$GITHUB_ENV"
+          echo "SDK_URL=$sdk_url" >> "$GITHUB_ENV"
+          echo "UPLOAD_RELEASE=$upload_release" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib gettext \
+            git jq libncurses-dev libssl-dev python3 rsync shellcheck unzip \
+            zlib1g-dev file wget curl xz-utils zstd
+
+      - name: Validate source tree
+        run: |
+          chmod +x scripts/*.sh tests/*.sh
+          scripts/check-version.sh
+          scripts/validate.sh
+
+      - name: Download and verify official OpenWrt SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/openwrt-sdk"
+          cd "$RUNNER_TEMP/openwrt-sdk"
+          sdk_name="$(basename "$SDK_URL")"
+          sdk_dir_url="${SDK_URL%/*}"
+          curl --fail --location --proto '=https' --tlsv1.2 -o "$sdk_name" "$SDK_URL"
+          curl --fail --location --proto '=https' --tlsv1.2 -o sha256sums "$sdk_dir_url/sha256sums"
+          grep "  $sdk_name$" sha256sums > sdk.sha256
+          sha256sum -c sdk.sha256
+          tar --use-compress-program=unzstd -xf "$sdk_name"
+          sdk_dir="$(find "$PWD" -maxdepth 1 -type d -name 'openwrt-sdk-*' -print -quit)"
+          test -n "$sdk_dir"
+          echo "SDK_DIR=$sdk_dir" >> "$GITHUB_ENV"
+
+      - name: Prepare feeds
+        run: |
+          cd "$SDK_DIR"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Add pinned Forkop package definition
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ushan0v/forkop.git "$RUNNER_TEMP/forkop"
+          git -C "$RUNNER_TEMP/forkop" checkout --detach "$FORKOP_SOURCE_SHA"
+          test "$(git -C "$RUNNER_TEMP/forkop" rev-parse HEAD)" = "$FORKOP_SOURCE_SHA"
+          mkdir -p "$SDK_DIR/package/forkop"
+          rsync -a "$RUNNER_TEMP/forkop/forkop/" "$SDK_DIR/package/forkop/"
+
+      - name: Copy project packages into SDK
+        run: |
+          mkdir -p "$SDK_DIR/package/forkop-analyzer" "$SDK_DIR/package/luci-app-forkop-analyzer"
+          rsync -a forkop-analyzer/ "$SDK_DIR/package/forkop-analyzer/"
+          rsync -a luci-app-forkop-analyzer/ "$SDK_DIR/package/luci-app-forkop-analyzer/"
+
+      - name: Configure SDK
+        run: |
+          cd "$SDK_DIR"
+          printf '%s\n' \
+            'CONFIG_PACKAGE_forkop-analyzer=m' \
+            'CONFIG_PACKAGE_luci-app-forkop-analyzer=m' >> .config
+          make defconfig
+
+      - name: Build backend APK
+        run: |
+          cd "$SDK_DIR"
+          make package/forkop-analyzer/compile V=s
+
+      - name: Build LuCI APK
+        run: |
+          cd "$SDK_DIR"
+          make package/luci-app-forkop-analyzer/compile V=s
+
+      - name: Compile-check ucode with SDK host tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          ucode_bin="$(find "$SDK_DIR/staging_dir/host/bin" -type f -name ucode -print -quit)"
+          test -x "$ucode_bin"
+          while IFS= read -r source; do
+            "$ucode_bin" -c "$source" >/dev/null
+          done < <(find forkop-analyzer/files -type f \( -name '*.uc' -o -path '*/rpcd/ucode/*' \) -print)
+
+      - name: Collect deterministic release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          mapfile -t backend < <(find "$SDK_DIR/bin" -type f -name "forkop-analyzer-${PROJECT_VERSION}-r${PROJECT_RELEASE}*.apk")
+          mapfile -t luci < <(find "$SDK_DIR/bin" -type f -name "luci-app-forkop-analyzer-${PROJECT_VERSION}-r${PROJECT_RELEASE}*.apk")
+          test "${#backend[@]}" -eq 1
+          test "${#luci[@]}" -eq 1
+          cp "${backend[0]}" "dist/forkop-analyzer-${PROJECT_VERSION}-r${PROJECT_RELEASE}.apk"
+          cp "${luci[0]}" "dist/luci-app-forkop-analyzer-${PROJECT_VERSION}-r${PROJECT_RELEASE}.apk"
+          (cd dist && sha256sum *.apk > SHA256SUMS)
+
+      - name: Inspect APK contents and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend="dist/forkop-analyzer-${PROJECT_VERSION}-r${PROJECT_RELEASE}.apk"
+          luci="dist/luci-app-forkop-analyzer-${PROJECT_VERSION}-r${PROJECT_RELEASE}.apk"
+          tar --ignore-zeros -tzf "$backend" > "$RUNNER_TEMP/backend.contents"
+          tar --ignore-zeros -tzf "$luci" > "$RUNNER_TEMP/luci.contents"
+          grep -q 'usr/lib/forkop-analyzer/forkop_adapter.uc' "$RUNNER_TEMP/backend.contents"
+          grep -q 'usr/share/rpcd/ucode/forkop-analyzer' "$RUNNER_TEMP/backend.contents"
+          grep -q 'luci-static/resources/view/forkop-analyzer/overview.js' "$RUNNER_TEMP/luci.contents"
+          tar --ignore-zeros -xOzf "$backend" .PKGINFO > "$RUNNER_TEMP/backend.pkginfo"
+          tar --ignore-zeros -xOzf "$luci" .PKGINFO > "$RUNNER_TEMP/luci.pkginfo"
+          grep -q 'depend = forkop' "$RUNNER_TEMP/backend.pkginfo"
+          grep -q 'depend = forkop-analyzer' "$RUNNER_TEMP/luci.pkginfo"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: forkop-analyzer-${{ env.PROJECT_VERSION }}-openwrt-${{ env.OPENWRT_VERSION }}
+          path: |
+            dist/forkop-analyzer-*.apk
+            dist/luci-app-forkop-analyzer-*.apk
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        if: env.UPLOAD_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "Forkop Analyzer $PROJECT_VERSION" \
+              --notes "OpenWrt $OPENWRT_VERSION APK packages. Tested against Forkop $FORKOP_SOURCE_SHA. Full mode generates benchmark traffic."
+          fi
+          gh release upload "$RELEASE_TAG" dist/*.apk dist/SHA256SUMS --clobber

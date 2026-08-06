@@ -1,0 +1,9 @@
+#!/bin/sh
+
+if [ -x /etc/init.d/forkop-analyzer ]; then
+	/etc/init.d/forkop-analyzer enable
+fi
+
+[ -f /etc/config/forkop-analyzer ] && chmod 600 /etc/config/forkop-analyzer
+
+exit 0

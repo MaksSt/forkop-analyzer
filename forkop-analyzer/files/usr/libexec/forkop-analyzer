@@ -1,0 +1,248 @@
+#!/bin/sh
+
+CONFIG='forkop-analyzer'
+RUNTIME_DIR='/var/run/forkop-analyzer'
+RESULTS_DIR='/var/lib/forkop-analyzer/results'
+TMP_ROOT='/tmp/forkop-analyzer'
+ADAPTER='/usr/lib/forkop-analyzer/adapter_cli.uc'
+STORE='/usr/lib/forkop-analyzer/result_store.uc'
+LIB_DIR='/usr/lib/forkop-analyzer'
+WORKER='/usr/libexec/forkop-analyzer-worker'
+
+adapter() {
+	ucode -L "$LIB_DIR" "$ADAPTER" "$@"
+}
+
+store() {
+	ucode "$STORE" "$@"
+}
+
+json_error() {
+	case "$1" in
+		DISABLED) message='Forkop Analyzer is disabled in UCI' ;;
+		ALREADY_RUNNING) message='A benchmark is already running' ;;
+		NO_NODES) message='No benchmarkable proxy outbounds were found' ;;
+		INVALID_PROFILE) message='Profile must be quick, gaming or full' ;;
+		CAPABILITY_UNAVAILABLE) message='Forkop or its local Clash API is unavailable or incompatible' ;;
+		FULL_UNAVAILABLE) message='Isolated Full benchmark is not supported by the current runtime' ;;
+		JOB_NOT_FOUND) message='Benchmark job was not found' ;;
+		START_FAILED) message='Benchmark worker failed to start' ;;
+		INVALID_ARGUMENT) message='Invalid command argument' ;;
+		*) message='Forkop Analyzer command failed' ;;
+	esac
+	printf '{"success":false,"error":{"code":"%s","message":"%s"}}\n' "$1" "$message"
+}
+
+ensure_dirs() {
+	mkdir -p "$RUNTIME_DIR" "$RESULTS_DIR" "$TMP_ROOT"
+	chmod 700 "$RUNTIME_DIR" "$RESULTS_DIR" "$TMP_ROOT"
+}
+
+valid_job_id() {
+	case "$1" in
+		''|*[!A-Za-z0-9._-]*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
+read_active_job() {
+	[ -f "$RUNTIME_DIR/active_job" ] || return 1
+	job="$(sed -n '1p' "$RUNTIME_DIR/active_job")"
+	valid_job_id "$job" || return 1
+	printf '%s\n' "$job"
+}
+
+worker_is_active() {
+	job="$1"
+	valid_job_id "$job" || return 1
+	[ -f "$RUNTIME_DIR/$job.pid" ] || return 1
+	pid="$(sed -n '1p' "$RUNTIME_DIR/$job.pid")"
+	case "$pid" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	[ -r "/proc/$pid/cmdline" ] || return 1
+	cmdline="$(tr '\000' ' ' < "/proc/$pid/cmdline")"
+	case "$cmdline" in
+		*forkop-analyzer-worker*"$job"*) kill -0 "$pid" 2>/dev/null ;;
+		*) return 1 ;;
+	esac
+}
+
+active_job() {
+	job="$(read_active_job 2>/dev/null)" || return 1
+	worker_is_active "$job" || return 1
+	printf '%s\n' "$job"
+}
+
+configured_selector() {
+	uci -q get "$CONFIG.main.selector"
+}
+
+start_benchmark() {
+	profile="$1"
+	selector="$2"
+
+	[ "$(uci -q get "$CONFIG.main.enabled")" = '1' ] || {
+		json_error DISABLED
+		return 1
+	}
+
+	case "$profile" in
+		quick|gaming|full) ;;
+		*) json_error INVALID_PROFILE; return 1 ;;
+	esac
+
+	ensure_dirs || return 1
+	capabilities_file="$TMP_ROOT/capabilities-$$.json"
+	adapter capabilities > "$capabilities_file" 2>/dev/null || true
+	clash_available="$(jsonfilter -q -i "$capabilities_file" -e '@.data.clash_api_available')"
+	full_available="$(jsonfilter -q -i "$capabilities_file" -e '@.data.isolated_benchmark_supported')"
+	rm -f "$capabilities_file"
+	if [ "$clash_available" != 'true' ]; then
+		json_error CAPABILITY_UNAVAILABLE
+		return 1
+	fi
+	if [ "$profile" = 'full' ] && [ "$full_available" != 'true' ]; then
+		json_error FULL_UNAVAILABLE
+		return 1
+	fi
+	if active_job >/dev/null 2>&1 || ! mkdir "$RUNTIME_DIR/active.lock" 2>/dev/null; then
+		json_error ALREADY_RUNNING
+		return 1
+	fi
+
+	[ -n "$selector" ] || selector="$(configured_selector)"
+	nodes_file="$TMP_ROOT/start-nodes-$$.tsv"
+	if ! adapter benchmark-nodes-lines "$selector" > "$nodes_file"; then
+		rm -f "$nodes_file"
+		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		json_error NO_NODES
+		return 1
+	fi
+	total="$(wc -l < "$nodes_file" | tr -d ' ')"
+	rm -f "$nodes_file"
+	case "$total" in
+		''|*[!0-9]*|0) rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true; json_error NO_NODES; return 1 ;;
+	esac
+
+	if [ "$profile" = 'full' ]; then
+		full_max_nodes="$(uci -q get "$CONFIG.main.full_max_nodes")"
+		case "$full_max_nodes" in ''|*[!0-9]*) full_max_nodes=10 ;; esac
+		[ "$full_max_nodes" -gt 0 ] || full_max_nodes=10
+		[ "$total" -le "$full_max_nodes" ] || total="$full_max_nodes"
+	fi
+
+	job_id="$(date -u '+%Y%m%dT%H%M%SZ')-$$"
+	state_path="$RUNTIME_DIR/$job_id.json"
+	result_path="$RESULTS_DIR/$job_id.json"
+	original_node=''
+	if [ -n "$selector" ]; then
+		original_node="$(adapter current-node "$selector" 2>/dev/null | jsonfilter -q -e '@.data.outbound_tag')"
+	fi
+
+	if ! store init "$state_path" "$result_path" "$job_id" "$profile" "$selector" "$original_node" "$total" >/dev/null; then
+		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		json_error START_FAILED
+		return 1
+	fi
+
+	printf '%s\n' "$job_id" > "$RUNTIME_DIR/active_job"
+	chmod 600 "$RUNTIME_DIR/active_job" "$state_path" "$result_path"
+
+	"$WORKER" "$job_id" "$profile" "$selector" "$original_node" "$total" </dev/null > "$RUNTIME_DIR/$job_id.log" 2>&1 &
+	pid=$!
+	printf '%s\n' "$pid" > "$RUNTIME_DIR/$job_id.pid"
+	chmod 600 "$RUNTIME_DIR/$job_id.pid" "$RUNTIME_DIR/$job_id.log"
+
+	if ! worker_is_active "$job_id"; then
+		store finish "$state_path" "$result_path" failed 'Benchmark worker failed to start' "$original_node" 1 0 >/dev/null 2>&1 || true
+		rm -f "$RUNTIME_DIR/active_job" "$RUNTIME_DIR/$job_id.pid"
+		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		json_error START_FAILED
+		return 1
+	fi
+
+	printf '{"success":true,"data":{"job_id":"%s","profile":"%s","total":%s}}\n' "$job_id" "$profile" "$total"
+}
+
+cancel_benchmark() {
+	requested="$1"
+	job="$(active_job 2>/dev/null)" || {
+		json_error JOB_NOT_FOUND
+		return 1
+	}
+	if [ -n "$requested" ] && [ "$requested" != "$job" ]; then
+		json_error JOB_NOT_FOUND
+		return 1
+	fi
+	pid="$(sed -n '1p' "$RUNTIME_DIR/$job.pid")"
+	: > "$RUNTIME_DIR/$job.cancel"
+	chmod 600 "$RUNTIME_DIR/$job.cancel"
+	kill -TERM "$pid" 2>/dev/null || true
+	printf '{"success":true,"data":{"job_id":"%s","cancelling":true}}\n' "$job"
+}
+
+show_status() {
+	job="$1"
+	if [ -z "$job" ]; then
+		job="$(read_active_job 2>/dev/null)" || job=''
+	fi
+	if [ -z "$job" ]; then
+		printf '{"success":true,"data":{"status":"idle","running":false}}\n'
+		return 0
+	fi
+	valid_job_id "$job" || { json_error INVALID_ARGUMENT; return 1; }
+	path="$RUNTIME_DIR/$job.json"
+	[ -f "$path" ] || path="$RESULTS_DIR/$job.json"
+	[ -f "$path" ] || { json_error JOB_NOT_FOUND; return 1; }
+	store read "$path"
+}
+
+export_result() {
+	format="$1"
+	job="$2"
+	valid_job_id "$job" || { json_error INVALID_ARGUMENT; return 1; }
+	path="$RESULTS_DIR/$job.json"
+	[ -f "$path" ] || { json_error JOB_NOT_FOUND; return 1; }
+	case "$format" in
+		json) store export-json "$path" ;;
+		csv) store export-csv "$path" ;;
+		*) json_error INVALID_ARGUMENT; return 1 ;;
+	esac
+}
+
+cleanup_runtime() {
+	job="$(active_job 2>/dev/null)" || job=''
+	if [ -n "$job" ]; then
+		pid="$(sed -n '1p' "$RUNTIME_DIR/$job.pid")"
+		kill -TERM "$pid" 2>/dev/null || true
+		count=0
+		while worker_is_active "$job" && [ "$count" -lt 5 ]; do
+			sleep 1
+			count=$((count + 1))
+		done
+	fi
+	rm -rf -- "$TMP_ROOT"
+	if [ -d "$RUNTIME_DIR" ] && ! active_job >/dev/null 2>&1; then
+		rm -rf -- "$RUNTIME_DIR"
+	fi
+	printf '{"success":true,"data":{"cleaned":true}}\n'
+}
+
+case "$1" in
+	capabilities) adapter capabilities ;;
+	nodes) adapter benchmark-nodes "${2:-$(configured_selector)}" ;;
+	selectors) adapter selectors ;;
+	start) start_benchmark "$2" "$3" ;;
+	status) show_status "$2" ;;
+	cancel) cancel_benchmark "$2" ;;
+	results) ensure_dirs && store list "$RESULTS_DIR" ;;
+	export) export_result "$2" "$3" ;;
+	select) adapter select-node "$2" "$3" ;;
+	cleanup) cleanup_runtime ;;
+	*)
+		printf '%s\n' 'Usage: forkop-analyzer {capabilities|nodes|selectors|start PROFILE [SELECTOR]|status [JOB]|cancel [JOB]|results|export FORMAT JOB|select SELECTOR OUTBOUND|cleanup}' >&2
+		json_error INVALID_ARGUMENT
+		exit 1
+	;;
+esac

@@ -1,0 +1,223 @@
+#!/bin/sh
+
+JOB_ID="$1"
+PROFILE="$2"
+SELECTOR="$3"
+ORIGINAL_NODE="$4"
+TOTAL="$5"
+
+RUNTIME_DIR='/var/run/forkop-analyzer'
+RESULTS_DIR='/var/lib/forkop-analyzer/results'
+TMP_ROOT='/tmp/forkop-analyzer'
+LIB_DIR='/usr/lib/forkop-analyzer'
+ADAPTER="$LIB_DIR/adapter_cli.uc"
+STORE="$LIB_DIR/result_store.uc"
+SCORING="$LIB_DIR/scoring.sh"
+STATE_PATH="$RUNTIME_DIR/$JOB_ID.json"
+RESULT_PATH="$RESULTS_DIR/$JOB_ID.json"
+JOB_TMP="$TMP_ROOT/$JOB_ID"
+
+. "$SCORING"
+
+adapter() {
+	ucode -L "$LIB_DIR" "$ADAPTER" "$@"
+}
+
+store() {
+	ucode "$STORE" "$@"
+}
+
+uci_number() {
+	value="$(uci -q get "forkop-analyzer.main.$1")"
+	case "$value" in
+		''|*[!0-9]*) printf '%s\n' "$2" ;;
+		*) printf '%s\n' "$value" ;;
+	esac
+}
+
+ISOLATED_PID=''
+ISOLATED_CONFIG=''
+FINALIZED=0
+COMPLETED=0
+TRAFFIC_BYTES=0
+
+cleanup_isolated() {
+	if [ -n "$ISOLATED_PID" ]; then
+		kill -TERM "$ISOLATED_PID" 2>/dev/null || true
+		wait "$ISOLATED_PID" 2>/dev/null || true
+		ISOLATED_PID=''
+	fi
+	[ -n "$ISOLATED_CONFIG" ] && rm -f "$ISOLATED_CONFIG"
+	ISOLATED_CONFIG=''
+}
+
+current_node() {
+	[ -n "$SELECTOR" ] || return 0
+	adapter current-node "$SELECTOR" 2>/dev/null | jsonfilter -q -e '@.data.outbound_tag'
+}
+
+release_job() {
+	active=''
+	[ -f "$RUNTIME_DIR/active_job" ] && active="$(sed -n '1p' "$RUNTIME_DIR/active_job")"
+	if [ "$active" = "$JOB_ID" ]; then
+		rm -f "$RUNTIME_DIR/active_job" "$RUNTIME_DIR/$JOB_ID.pid" "$RUNTIME_DIR/$JOB_ID.cancel"
+		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+	fi
+}
+
+finish_job() {
+	status="$1"
+	message="$2"
+	[ "$FINALIZED" -eq 0 ] || return 0
+	final_node="$(current_node)"
+	unchanged=0
+	[ "$final_node" = "$ORIGINAL_NODE" ] && unchanged=1
+	store finish "$STATE_PATH" "$RESULT_PATH" "$status" "$message" "$final_node" "$unchanged" "$TRAFFIC_BYTES" >/dev/null 2>&1 || true
+	FINALIZED=1
+	release_job
+}
+
+on_signal() {
+	cleanup_isolated
+	finish_job cancelled 'Benchmark was cancelled'
+	exit 130
+}
+
+on_exit() {
+	cleanup_isolated
+	if [ "$FINALIZED" -eq 0 ]; then
+		finish_job failed 'Benchmark worker exited unexpectedly'
+	fi
+	rm -rf -- "$JOB_TMP"
+}
+
+trap on_signal INT TERM
+trap on_exit EXIT
+
+mkdir -p "$JOB_TMP"
+chmod 700 "$JOB_TMP"
+
+NODES_FILE="$JOB_TMP/nodes.tsv"
+adapter benchmark-nodes-lines "$SELECTOR" > "$NODES_FILE" || {
+	finish_job failed 'Unable to enumerate Forkop outbounds'
+	exit 1
+}
+
+TIMEOUT_MS="$(uci_number latency_timeout_ms 5000)"
+QUICK_REPEATS="$(uci_number quick_repeats 3)"
+GAMING_REPEATS="$(uci_number gaming_repeats 8)"
+FULL_MAX_NODES="$(uci_number full_max_nodes 10)"
+PORT_BASE="$(uci_number isolated_port_base 19080)"
+DOWNLOAD_BYTES="$(uci_number download_bytes 5000000)"
+TARGET_DOWNLOAD_MBPS="$(uci_number target_download_mbps 100)"
+MAX_TRAFFIC_MB="$(uci_number max_traffic_mb 100)"
+MAX_TRAFFIC_BYTES=$((MAX_TRAFFIC_MB * 1024 * 1024))
+DOWNLOAD_URL="$(uci -q get forkop-analyzer.main.download_url)"
+[ -n "$DOWNLOAD_URL" ] || DOWNLOAD_URL='https://speed.cloudflare.com/__down?bytes=5000000'
+
+case "$PROFILE" in
+	quick) REPEATS="$QUICK_REPEATS" ;;
+	gaming|full) REPEATS="$GAMING_REPEATS" ;;
+	*) finish_job failed 'Invalid benchmark profile'; exit 1 ;;
+esac
+[ "$REPEATS" -gt 0 ] || REPEATS=1
+
+TAB="$(printf '\t')"
+INDEX=0
+while IFS="$TAB" read -r NODE NODE_TYPE; do
+	[ -n "$NODE" ] || continue
+	INDEX=$((INDEX + 1))
+	if [ "$PROFILE" = 'full' ] && [ "$INDEX" -gt "$FULL_MAX_NODES" ]; then
+		break
+	fi
+	if [ -f "$RUNTIME_DIR/$JOB_ID.cancel" ]; then
+		finish_job cancelled 'Benchmark was cancelled'
+		exit 0
+	fi
+
+	store progress "$STATE_PATH" "$RESULT_PATH" "$NODE" "$COMPLETED" "$TRAFFIC_BYTES" >/dev/null 2>&1 || true
+	SAMPLES="$JOB_TMP/samples-$INDEX.txt"
+	: > "$SAMPLES"
+	ATTEMPTS=0
+	SUCCESSFUL=0
+	while [ "$ATTEMPTS" -lt "$REPEATS" ]; do
+		[ -f "$RUNTIME_DIR/$JOB_ID.cancel" ] && on_signal
+		ATTEMPTS=$((ATTEMPTS + 1))
+		DELAY_FILE="$JOB_TMP/delay-$INDEX-$ATTEMPTS.json"
+		if adapter clash-api get_proxy_latency "$NODE" "$TIMEOUT_MS" > "$DELAY_FILE" 2>/dev/null; then
+			delay="$(jsonfilter -q -i "$DELAY_FILE" -e '@.delay')"
+			case "$delay" in
+				''|*[!0-9.]* ) ;;
+				*) printf '%s\n' "$delay" >> "$SAMPLES"; SUCCESSFUL=$((SUCCESSFUL + 1)) ;;
+			esac
+		fi
+	done
+
+	if [ "$SUCCESSFUL" -gt 0 ]; then
+		metrics="$(awk 'NR == 1 { min=$1; max=$1; prev=$1 } {
+			sum += $1; if ($1 < min) min=$1; if ($1 > max) max=$1;
+			if (NR > 1) { d=$1-prev; if (d < 0) d=-d; diff += d } prev=$1
+		} END { printf "%.3f %.3f %.3f %.3f", sum/NR, min, max, NR > 1 ? diff/(NR-1) : 0 }' "$SAMPLES")"
+		LATENCY="$(printf '%s\n' "$metrics" | awk '{print $1}')"
+		LATENCY_MIN="$(printf '%s\n' "$metrics" | awk '{print $2}')"
+		LATENCY_MAX="$(printf '%s\n' "$metrics" | awk '{print $3}')"
+		JITTER="$(printf '%s\n' "$metrics" | awk '{print $4}')"
+		ERROR=''
+	else
+		LATENCY=1000
+		LATENCY_MIN=1000
+		LATENCY_MAX=1000
+		JITTER=1000
+		ERROR='All latency samples failed'
+	fi
+	SUCCESS_PCT="$(awk -v ok="$SUCCESSFUL" -v total="$ATTEMPTS" 'BEGIN { printf "%.2f", total > 0 ? ok * 100 / total : 0 }')"
+	DOWNLOAD_MBPS=0
+
+	if [ "$PROFILE" = 'full' ] && [ "$SUCCESSFUL" -gt 0 ]; then
+		if [ $((TRAFFIC_BYTES + DOWNLOAD_BYTES)) -gt "$MAX_TRAFFIC_BYTES" ]; then
+			ERROR='Traffic limit reached before throughput test'
+		else
+			port=$((PORT_BASE + INDEX - 1))
+			ISOLATED_CONFIG="$JOB_TMP/sing-box-$INDEX.json"
+			PREPARE_FILE="$JOB_TMP/prepare-$INDEX.json"
+			if adapter prepare-isolated "$NODE" "$ISOLATED_CONFIG" "$port" > "$PREPARE_FILE" 2>/dev/null && \
+				/usr/bin/sing-box -c "$ISOLATED_CONFIG" check >/dev/null 2>&1; then
+				/usr/bin/sing-box -c "$ISOLATED_CONFIG" run > "$JOB_TMP/sing-box-$INDEX.log" 2>&1 &
+				ISOLATED_PID=$!
+				sleep 1
+				if kill -0 "$ISOLATED_PID" 2>/dev/null; then
+					DOWNLOAD_RESULT="$JOB_TMP/download-$INDEX.txt"
+					if curl -fsS --proxy "socks5h://127.0.0.1:$port" \
+						--connect-timeout 10 --max-time 45 --max-filesize "$DOWNLOAD_BYTES" \
+						-o /dev/null -w '%{speed_download} %{size_download}' \
+						"$DOWNLOAD_URL" > "$DOWNLOAD_RESULT" 2>/dev/null; then
+						speed="$(awk '{print $1}' "$DOWNLOAD_RESULT")"
+						size="$(awk '{print int($2)}' "$DOWNLOAD_RESULT")"
+						DOWNLOAD_MBPS="$(awk -v bytes_per_second="$speed" 'BEGIN { printf "%.3f", bytes_per_second * 8 / 1000000 }')"
+						TRAFFIC_BYTES=$((TRAFFIC_BYTES + size))
+					else
+						ERROR='Isolated throughput request failed'
+					fi
+				else
+					ERROR='Temporary sing-box instance exited during startup'
+				fi
+				cleanup_isolated
+			else
+				ERROR="$(jsonfilter -q -i "$PREPARE_FILE" -e '@.error.message')"
+				[ -n "$ERROR" ] || ERROR='Unable to prepare isolated sing-box config'
+			fi
+		fi
+	fi
+
+	SCORE="$(score_profile "$PROFILE" "$LATENCY" "$JITTER" "$SUCCESS_PCT" "$DOWNLOAD_MBPS" "$TARGET_DOWNLOAD_MBPS")" || SCORE=0
+	store append "$STATE_PATH" "$RESULT_PATH" "$NODE" "$NODE_TYPE" "$LATENCY" "$LATENCY_MIN" "$LATENCY_MAX" "$JITTER" "$SUCCESS_PCT" "$SUCCESSFUL" "$ATTEMPTS" "$DOWNLOAD_MBPS" "$SCORE" "$ERROR" >/dev/null 2>&1 || true
+	COMPLETED=$((COMPLETED + 1))
+	store progress "$STATE_PATH" "$RESULT_PATH" '' "$COMPLETED" "$TRAFFIC_BYTES" >/dev/null 2>&1 || true
+done < "$NODES_FILE"
+
+finish_job completed 'Benchmark completed'
+
+RETENTION_DAYS="$(uci_number retention_days 30)"
+[ "$RETENTION_DAYS" -gt 0 ] && find "$RESULTS_DIR" -type f -name '*.json' -mtime "+$RETENTION_DAYS" -delete 2>/dev/null || true
+
+exit 0

@@ -1,0 +1,23 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Forkop Analyzer"
+msgstr ""
+
+msgid "Analyzer"
+msgstr ""
+
+msgid "Results"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Quick"
+msgstr ""
+
+msgid "Gaming"
+msgstr ""
+
+msgid "Full"
+msgstr ""

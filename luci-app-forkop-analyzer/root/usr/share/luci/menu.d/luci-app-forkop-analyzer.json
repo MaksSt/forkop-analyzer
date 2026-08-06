@@ -1,0 +1,36 @@
+{
+  "admin/services/forkop-analyzer": {
+    "title": "Forkop Analyzer",
+    "order": 43,
+    "action": {
+      "type": "firstchild"
+    },
+    "depends": {
+      "acl": [ "luci-app-forkop-analyzer" ]
+    }
+  },
+  "admin/services/forkop-analyzer/overview": {
+    "title": "Analyzer",
+    "order": 10,
+    "action": {
+      "type": "view",
+      "path": "forkop-analyzer/overview"
+    }
+  },
+  "admin/services/forkop-analyzer/results": {
+    "title": "Results",
+    "order": 20,
+    "action": {
+      "type": "view",
+      "path": "forkop-analyzer/results"
+    }
+  },
+  "admin/services/forkop-analyzer/settings": {
+    "title": "Settings",
+    "order": 30,
+    "action": {
+      "type": "view",
+      "path": "forkop-analyzer/settings"
+    }
+  }
+}

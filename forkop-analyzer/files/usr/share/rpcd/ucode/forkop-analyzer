@@ -1,0 +1,103 @@
+'use strict';
+
+let fs = require('fs');
+
+const CLI = '/usr/bin/forkop-analyzer';
+
+function as_string(value) {
+	return value == null ? '' : '' + value;
+}
+
+function shell_quote(value) {
+	return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+function command_from_args(args) {
+	let parts = [];
+	for (let arg in args)
+		push(parts, shell_quote(arg));
+	return join(' ', parts);
+}
+
+function capture(args) {
+	let pipe = fs.popen(command_from_args(args) + ' 2>/dev/null', 'r');
+	if (!pipe)
+		return { status: 127, output: '' };
+	let output = pipe.read('all');
+	let status = int(pipe.close() || 0);
+	if (status > 255)
+		status = int(status / 256);
+	return { status, output: as_string(output) };
+}
+
+function command_json(args) {
+	let command = [ CLI ];
+	for (let arg in args)
+		if (as_string(arg) != '')
+			push(command, arg);
+	let result = capture(command);
+	try {
+		return json(result.output);
+	}
+	catch (e) {
+		return {
+			success: false,
+			error: {
+				code: result.status == 0 ? 'INVALID_BACKEND_RESPONSE' : 'BACKEND_FAILED',
+				message: 'Forkop Analyzer backend returned no valid JSON'
+			}
+		};
+	}
+}
+
+function export_result(format, job_id) {
+	let result = capture([ CLI, 'export', format, job_id ]);
+	if (result.status != 0)
+		return { success: false, error: { code: 'EXPORT_FAILED', message: 'Unable to export benchmark result' } };
+	return {
+		success: true,
+		data: {
+			format,
+			filename: 'forkop-analyzer-' + as_string(job_id) + '.' + as_string(format),
+			content: result.output
+		}
+	};
+}
+
+return {
+	'forkop-analyzer': {
+		capabilities: {
+			call: function() { return command_json([ 'capabilities' ]); }
+		},
+		nodes: {
+			args: { selector: '' },
+			call: function(request) { return command_json([ 'nodes', request.args.selector ]); }
+		},
+		selectors: {
+			call: function() { return command_json([ 'selectors' ]); }
+		},
+		status: {
+			args: { job_id: '' },
+			call: function(request) { return command_json([ 'status', request.args.job_id ]); }
+		},
+		results: {
+			call: function() { return command_json([ 'results' ]); }
+		},
+		export: {
+			args: { format: '', job_id: '' },
+			call: function(request) { return export_result(request.args.format, request.args.job_id); }
+		},
+		start: {
+			args: { profile: '', selector: '' },
+			call: function(request) { return command_json([ 'start', request.args.profile, request.args.selector ]); }
+		},
+		cancel: {
+			args: { job_id: '' },
+			call: function(request) { return command_json([ 'cancel', request.args.job_id ]); }
+		},
+		select_node: {
+			args: { selector: '', outbound_tag: '' },
+			call: function(request) { return command_json([ 'select', request.args.selector, request.args.outbound_tag ]); }
+		}
+	}
+};

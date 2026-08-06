@@ -1,0 +1,28 @@
+{
+  "luci-app-forkop-analyzer": {
+    "description": "Grant access to Forkop Analyzer status and benchmarks",
+    "read": {
+      "ubus": {
+        "forkop-analyzer": [
+          "capabilities",
+          "nodes",
+          "selectors",
+          "status",
+          "results",
+          "export"
+        ]
+      },
+      "uci": [ "forkop-analyzer" ]
+    },
+    "write": {
+      "ubus": {
+        "forkop-analyzer": [
+          "start",
+          "cancel",
+          "select_node"
+        ]
+      },
+      "uci": [ "forkop-analyzer" ]
+    }
+  }
+}
