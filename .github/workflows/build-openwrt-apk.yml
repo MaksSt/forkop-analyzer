@@ -186,16 +186,20 @@ jobs:
 
           "$apk_bin" adbdump --format json "$backend" > "$RUNNER_TEMP/backend.metadata.json"
           "$apk_bin" adbdump --format json "$luci" > "$RUNNER_TEMP/luci.metadata.json"
+          jq '{name: .info.name, version: .info.version, arch: .info.arch, depends: .info.depends}' \
+            "$RUNNER_TEMP/backend.metadata.json"
+          jq '{name: .info.name, version: .info.version, arch: .info.arch, depends: .info.depends}' \
+            "$RUNNER_TEMP/luci.metadata.json"
           jq -e --arg version "${PROJECT_VERSION}-r${PROJECT_RELEASE}" '
             .info.name == "forkop-analyzer" and
             .info.version == $version and
-            .info.arch == "all" and
+            .info.arch == "noarch" and
             (.info.depends | index("forkop") != null)
           ' "$RUNNER_TEMP/backend.metadata.json" >/dev/null
           jq -e --arg version "${PROJECT_VERSION}-r${PROJECT_RELEASE}" '
             .info.name == "luci-app-forkop-analyzer" and
             .info.version == $version and
-            .info.arch == "all" and
+            .info.arch == "noarch" and
             (.info.depends | index("forkop-analyzer") != null)
           ' "$RUNNER_TEMP/luci.metadata.json" >/dev/null
 
