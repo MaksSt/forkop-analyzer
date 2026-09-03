@@ -23,7 +23,7 @@ LuCI-приложение и backend для безопасного сравне�
 - атомарное хранение результатов в `/var/lib/forkop-analyzer/results`;
 - экспорт JSON и CSV;
 - ручное, отдельно подтверждаемое переключение production selector;
-- ежедневный scheduler;
+- ежедневный scheduler с устойчивым к перезагрузке дневным checkpoint;
 - два независимых APK: `forkop-analyzer` и `luci-app-forkop-analyzer`.
 
 ## Архитектура
