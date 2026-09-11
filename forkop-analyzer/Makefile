@@ -16,7 +16,7 @@ define Package/forkop-analyzer
 	SUBMENU:=VPN
 	TITLE:=Analyzer and benchmark engine for Forkop VPN nodes
 	URL:=https://github.com/MaksSt/forkop-analyzer
-	DEPENDS:=+forkop +curl +ca-bundle +jsonfilter +ucode +ucode-mod-fs +ucode-mod-uci +rpcd-mod-ucode
+	DEPENDS:=+forkop +curl +coreutils-timeout +ca-bundle +jsonfilter +ucode +ucode-mod-fs +ucode-mod-uci +rpcd-mod-ucode
 	PKGARCH:=all
 endef
 
@@ -64,6 +64,7 @@ define Package/forkop-analyzer/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./files/usr/bin/forkop-analyzer $(1)/usr/bin/forkop-analyzer
 	$(INSTALL_BIN) ./files/usr/bin/forkop-analyzer-scheduler $(1)/usr/bin/forkop-analyzer-scheduler
+	$(INSTALL_BIN) ./files/usr/bin/forkop-analyzer-monitor $(1)/usr/bin/forkop-analyzer-monitor
 
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./files/usr/libexec/forkop-analyzer $(1)/usr/libexec/forkop-analyzer
@@ -73,6 +74,8 @@ define Package/forkop-analyzer/install
 	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/forkop_adapter.uc $(1)/usr/lib/forkop-analyzer/forkop_adapter.uc
 	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/adapter_cli.uc $(1)/usr/lib/forkop-analyzer/adapter_cli.uc
 	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/result_store.uc $(1)/usr/lib/forkop-analyzer/result_store.uc
+	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/monitor.uc $(1)/usr/lib/forkop-analyzer/monitor.uc
+	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/monitor_store.uc $(1)/usr/lib/forkop-analyzer/monitor_store.uc
 	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/scoring.sh $(1)/usr/lib/forkop-analyzer/scoring.sh
 	$(INSTALL_DATA) ./files/usr/lib/forkop-analyzer/latency.sh $(1)/usr/lib/forkop-analyzer/latency.sh
 

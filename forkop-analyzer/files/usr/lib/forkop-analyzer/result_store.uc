@@ -74,6 +74,7 @@ function init_job(state_path, result_path, job_id, profile, selector, original_n
 		completed: 0,
 		total: int(total || 0),
 		current_tag: '',
+		current_display_name: '',
 		traffic_bytes: 0,
 		selector_state: {
 			original: as_string(original_node),
@@ -87,11 +88,12 @@ function init_job(state_path, result_path, job_id, profile, selector, original_n
 		: response(false, null, 'STATE_WRITE_FAILED', 'Unable to initialize benchmark state');
 }
 
-function progress_job(state_path, result_path, current_tag, completed, traffic_bytes) {
+function progress_job(state_path, result_path, current_tag, current_display_name, completed, traffic_bytes) {
 	let value = load_job(result_path);
 	if (value == null)
 		return response(false, null, 'JOB_NOT_FOUND', 'Benchmark result does not exist');
 	value.current_tag = as_string(current_tag);
+	value.current_display_name = as_string(current_display_name || current_tag);
 	value.completed = int(completed || 0);
 	value.traffic_bytes = int(traffic_bytes || 0);
 	return write_both(state_path, result_path, value) ? 0 : 1;
@@ -104,20 +106,21 @@ function append_result(state_path, result_path) {
 
 	let item = {
 		tag: as_string(ARGV[3]),
-		type: as_string(ARGV[4]),
-		latency_ms: as_number(ARGV[5]),
-		latency_min_ms: as_number(ARGV[6]),
-		latency_max_ms: as_number(ARGV[7]),
-		jitter_ms: as_number(ARGV[8]),
-		success_pct: as_number(ARGV[9]),
-		loss_pct: as_number(ARGV[10]),
-		latency_p95_ms: as_number(ARGV[11]),
-		latency_spikes: int(ARGV[12] || 0),
-		successful_samples: int(ARGV[13] || 0),
-		attempts: int(ARGV[14] || 0),
-		download_mbps: as_number(ARGV[15]),
-		score: int(ARGV[16] || 0),
-		error: as_string(ARGV[17])
+		display_name: as_string(ARGV[4] || ARGV[3]),
+		type: as_string(ARGV[5]),
+		latency_ms: as_number(ARGV[6]),
+		latency_min_ms: as_number(ARGV[7]),
+		latency_max_ms: as_number(ARGV[8]),
+		jitter_ms: as_number(ARGV[9]),
+		success_pct: as_number(ARGV[10]),
+		loss_pct: as_number(ARGV[11]),
+		latency_p95_ms: as_number(ARGV[12]),
+		latency_spikes: int(ARGV[13] || 0),
+		successful_samples: int(ARGV[14] || 0),
+		attempts: int(ARGV[15] || 0),
+		download_mbps: as_number(ARGV[16]),
+		score: int(ARGV[17] || 0),
+		error: as_string(ARGV[18])
 	};
 	if (type(value.results) != 'array')
 		value.results = [];
@@ -163,7 +166,7 @@ function result_summary(value) {
 		completed: int(value.completed || 0),
 		total: int(value.total || 0),
 		traffic_bytes: int(value.traffic_bytes || 0),
-		best: best == null ? null : { tag: best.tag, score: best.score }
+		best: best == null ? null : { tag: best.tag, display_name: as_string(best.display_name || best.tag), score: best.score }
 	};
 }
 
@@ -188,11 +191,11 @@ function export_csv(path) {
 	let value = read_json(path);
 	if (value == null)
 		return 1;
-	print('job_id,profile,selector,tag,type,latency_ms,latency_min_ms,latency_max_ms,jitter_ms,latency_p95_ms,latency_spikes,success_pct,loss_pct,download_mbps,score,error\n');
+	print('job_id,profile,selector,tag,display_name,type,latency_ms,latency_min_ms,latency_max_ms,jitter_ms,latency_p95_ms,latency_spikes,success_pct,loss_pct,download_mbps,score,error\n');
 	for (let item in (type(value.results) == 'array' ? value.results : [])) {
 		print(join(',', [
 			csv_cell(value.job_id), csv_cell(value.profile), csv_cell(value.selector),
-			csv_cell(item.tag), csv_cell(item.type), as_string(item.latency_ms),
+			csv_cell(item.tag), csv_cell(item.display_name || item.tag), csv_cell(item.type), as_string(item.latency_ms),
 			as_string(item.latency_min_ms), as_string(item.latency_max_ms),
 			as_string(item.jitter_ms), as_string(item.latency_p95_ms), as_string(item.latency_spikes),
 			as_string(item.success_pct), as_string(item.loss_pct),
@@ -207,7 +210,7 @@ let mode = ARGV[0] || '';
 if (mode == 'init')
 	exit(init_job(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]));
 else if (mode == 'progress')
-	exit(progress_job(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]));
+	exit(progress_job(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]));
 else if (mode == 'append')
 	exit(append_result(ARGV[1], ARGV[2]));
 else if (mode == 'finish')

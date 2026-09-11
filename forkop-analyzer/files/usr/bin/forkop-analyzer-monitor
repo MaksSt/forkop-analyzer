@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# Единственный писатель истории — отдельный procd instance.
+while true; do
+	started="$(date +%s)"
+	ucode -L /usr/lib/forkop-analyzer /usr/lib/forkop-analyzer/monitor.uc sample
+	interval="$(uci -q get forkop-analyzer.main.monitor_interval)"
+	case "$interval" in ''|*[!0-9]*) interval=15 ;; esac
+	[ "$interval" -ge 10 ] && [ "$interval" -le 300 ] || interval=15
+	elapsed=$(( $(date +%s) - started ))
+	delay=$((interval - elapsed))
+	[ "$delay" -ge 1 ] && [ "$delay" -le "$interval" ] || delay=1
+	sleep "$delay"
+done

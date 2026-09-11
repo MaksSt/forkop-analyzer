@@ -76,6 +76,9 @@ return {
 		selectors: {
 			call: function() { return command_json([ 'selectors' ]); }
 		},
+		monitor: {
+			call: function() { return command_json([ 'monitor' ]); }
+		},
 		status: {
 			args: { job_id: '' },
 			call: function(request) { return command_json([ 'status', request.args.job_id ]); }

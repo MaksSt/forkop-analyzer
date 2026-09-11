@@ -3,24 +3,19 @@ set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 VIEWS="$ROOT/luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer"
+UI="$ROOT/luci-app-forkop-analyzer/htdocs/luci-static/resources/forkop-analyzer/ui-v1.js"
 
 if grep -n -E '^[[:space:]]+(rows|warnings),?[[:space:]]*$' \
-	"$VIEWS/overview.js" "$VIEWS/results.js"; then
+	"$VIEWS/overview-v5.js" "$VIEWS/results-v3.js" "$UI"; then
 	printf 'FAIL: LuCI child list contains a nested DOM-node array.\n' >&2
 	exit 1
 fi
 
-overview_tables="$(grep -c ']\.concat(rows)' "$VIEWS/overview.js")"
-results_tables="$(grep -c ']\.concat(rows)' "$VIEWS/results.js")"
-
-if [ "$overview_tables" -ne 1 ] || [ "$results_tables" -ne 2 ]; then
-	printf 'FAIL: expected flattened row lists in all three LuCI tables.\n' >&2
-	exit 1
-fi
-
-for view in "$VIEWS/overview.js" "$VIEWS/results.js"; do
-	grep -q "profile === 'full'" "$view"
-	grep -q 'Скорость скачивания измеряется только в профиле Full' "$view"
+for view in "$VIEWS/overview-v5.js" "$VIEWS/results-v3.js"; do
+	grep -Fq 'presentation.resultsTable(' "$view"
 done
-
+grep -Fq "E('thead'" "$UI"
+grep -Fq "E('tbody', {}, rows)" "$UI"
+grep -Fq "job.profile === 'full'" "$UI"
+grep -q 'Скорость скачивания измеряется только в профиле Full' "$UI"
 printf 'LuCI DOM contract tests passed.\n'

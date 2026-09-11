@@ -33,8 +33,9 @@ else if (mode == 'benchmark-nodes-lines') {
 	for (let item in adapter.get_benchmark_nodes(ARGV[1] || '')) {
 		let tag = '' + item.tag;
 		let outbound_type = '' + item.type;
-		if (match(tag, /[\t\r\n]/) == null && match(outbound_type, /[\t\r\n]/) == null)
-			print(tag, '\t', outbound_type, '\n');
+		let display_name = '' + (item.display_name || item.tag);
+		if (match(tag, /[\t\r\n]/) == null && match(outbound_type, /[\t\r\n]/) == null && match(display_name, /[\t\r\n]/) == null)
+			print(tag, '\t', outbound_type, '\t', display_name, '\n');
 	}
 	exit(0);
 }

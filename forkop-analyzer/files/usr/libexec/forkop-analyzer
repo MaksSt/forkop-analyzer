@@ -177,8 +177,8 @@ start_benchmark() {
 
 	if [ "$profile" = 'full' ]; then
 		full_max_nodes="$(uci -q get "$CONFIG.main.full_max_nodes")"
-		case "$full_max_nodes" in ''|*[!0-9]*) full_max_nodes=10 ;; esac
-		[ "$full_max_nodes" -gt 0 ] || full_max_nodes=10
+		case "$full_max_nodes" in ''|*[!0-9]*) full_max_nodes=15 ;; esac
+		[ "$full_max_nodes" -gt 0 ] || full_max_nodes=15
 		[ "$total" -le "$full_max_nodes" ] || total="$full_max_nodes"
 	fi
 
@@ -293,6 +293,7 @@ case "$1" in
 	capabilities) adapter capabilities ;;
 	nodes) adapter benchmark-nodes "${2:-$(configured_selector)}" ;;
 	selectors) adapter selectors ;;
+	monitor) ucode -L "$LIB_DIR" "$LIB_DIR/monitor.uc" read ;;
 	start) start_benchmark "$2" "$3" ;;
 	status) show_status "$2" ;;
 	cancel) cancel_benchmark "$2" ;;
@@ -301,7 +302,7 @@ case "$1" in
 	select) adapter select-node "$2" "$3" ;;
 	cleanup) cleanup_runtime ;;
 	*)
-		printf '%s\n' 'Usage: forkop-analyzer {capabilities|nodes|selectors|start PROFILE [SELECTOR]|status [JOB]|cancel [JOB]|results|export FORMAT JOB|select SELECTOR OUTBOUND|cleanup}' >&2
+		printf '%s\n' 'Usage: forkop-analyzer {capabilities|nodes|selectors|monitor|start PROFILE [SELECTOR]|status [JOB]|cancel [JOB]|results|export FORMAT JOB|select SELECTOR OUTBOUND|cleanup}' >&2
 		json_error INVALID_ARGUMENT
 		exit 1
 	;;

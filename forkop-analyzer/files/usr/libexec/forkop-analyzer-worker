@@ -111,14 +111,17 @@ TIMEOUT_MS="$(uci_number latency_timeout_ms 5000)"
 QUICK_REPEATS="$(uci_number quick_repeats 3)"
 GAMING_REPEATS="$(uci_number gaming_repeats 20)"
 FULL_REPEATS="$(uci_number full_repeats 8)"
-FULL_MAX_NODES="$(uci_number full_max_nodes 10)"
+FULL_MAX_NODES="$(uci_number full_max_nodes 15)"
 PORT_BASE="$(uci_number isolated_port_base 19080)"
-DOWNLOAD_BYTES="$(uci_number download_bytes 5000000)"
+DOWNLOAD_BYTES="$(uci_number download_bytes 1073741824)"
+DOWNLOAD_CHUNK_BYTES="$(uci_number download_chunk_bytes 1073741824)"
+DOWNLOAD_TIMEOUT_SECONDS="$(uci_number download_timeout_seconds 900)"
 TARGET_DOWNLOAD_MBPS="$(uci_number target_download_mbps 100)"
-MAX_TRAFFIC_MB="$(uci_number max_traffic_mb 100)"
+MAX_TRAFFIC_MB="$(uci_number max_traffic_mb 15360)"
 MAX_TRAFFIC_BYTES=$((MAX_TRAFFIC_MB * 1024 * 1024))
 DOWNLOAD_URL="$(uci -q get forkop-analyzer.main.download_url)"
-[ -n "$DOWNLOAD_URL" ] || DOWNLOAD_URL='https://speed.cloudflare.com/__down?bytes=5000000'
+[ -n "$DOWNLOAD_URL" ] || DOWNLOAD_URL='https://nbg1-speed.hetzner.com/1GB.bin'
+[ "$DOWNLOAD_CHUNK_BYTES" -gt 0 ] || DOWNLOAD_CHUNK_BYTES=1073741824
 if [ "$PROFILE" = 'full' ]; then
 	case "$DOWNLOAD_URL" in
 		https://*) ;;
@@ -136,8 +139,9 @@ esac
 
 TAB="$(printf '\t')"
 INDEX=0
-while IFS="$TAB" read -r NODE NODE_TYPE; do
+while IFS="$TAB" read -r NODE NODE_TYPE NODE_DISPLAY_NAME; do
 	[ -n "$NODE" ] || continue
+	[ -n "$NODE_DISPLAY_NAME" ] || NODE_DISPLAY_NAME="$NODE"
 	INDEX=$((INDEX + 1))
 	if [ "$PROFILE" = 'full' ] && [ "$INDEX" -gt "$FULL_MAX_NODES" ]; then
 		break
@@ -147,7 +151,7 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 		exit 0
 	fi
 
-	store progress "$STATE_PATH" "$RESULT_PATH" "$NODE" "$COMPLETED" "$TRAFFIC_BYTES" >/dev/null 2>&1 || true
+	store progress "$STATE_PATH" "$RESULT_PATH" "$NODE" "$NODE_DISPLAY_NAME" "$COMPLETED" "$TRAFFIC_BYTES" >/dev/null 2>&1 || true
 	SAMPLES="$JOB_TMP/samples-$INDEX.txt"
 	: > "$SAMPLES"
 	ATTEMPTS=0
@@ -201,20 +205,41 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 				if kill -0 "$ISOLATED_PID" 2>/dev/null; then
 					DOWNLOAD_RESULT="$JOB_TMP/download-$INDEX.txt"
 					download_ok=0
-					if curl -fsS --proxy "socks5h://127.0.0.1:$port" \
-						--connect-timeout 10 --max-time 45 --max-filesize "$DOWNLOAD_BYTES" \
-						-o /dev/null -w '%{speed_download} %{size_download}' \
-						"$DOWNLOAD_URL" > "$DOWNLOAD_RESULT" 2>/dev/null; then
+					downloaded=0
+					download_elapsed=0
+					download_failed=0
+					while [ "$downloaded" -lt "$DOWNLOAD_BYTES" ]; do
+						remaining=$((DOWNLOAD_BYTES - downloaded))
+						request_bytes="$DOWNLOAD_CHUNK_BYTES"
+						[ "$request_bytes" -le "$remaining" ] || request_bytes="$remaining"
+						request_url="$(printf '%s\n' "$DOWNLOAD_URL" | sed "s/{bytes}/$request_bytes/g")"
+						curl_status=0
+						curl -fsS --proxy "socks5h://127.0.0.1:$port" \
+							--connect-timeout 10 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" --max-filesize "$request_bytes" \
+							-o /dev/null -w '%{time_total} %{size_download} %{http_code}' \
+							"$request_url" > "$DOWNLOAD_RESULT" 2>/dev/null || curl_status=$?
+						elapsed="$(awk '{print $1}' "$DOWNLOAD_RESULT")"
+						size="$(awk '{print int($2)}' "$DOWNLOAD_RESULT")"
+						http_code="$(awk '{print $3}' "$DOWNLOAD_RESULT")"
+						case "$size" in ''|*[!0-9]*) size=0 ;; esac
+						case "$elapsed" in ''|*[!0-9.]*) elapsed=0 ;; esac
+						case "$http_code" in ''|*[!0-9]*) http_code=0 ;; esac
+						if [ "$size" -gt 0 ] && { [ "$curl_status" -eq 0 ] || [ "$curl_status" -eq 28 ]; }; then
+							downloaded=$((downloaded + size))
+							download_elapsed="$(awk -v total="$download_elapsed" -v chunk="$elapsed" 'BEGIN { printf "%.6f", total + chunk }')"
+						else
+							download_failed=1
+							break
+						fi
+					done
+					TRAFFIC_BYTES=$((TRAFFIC_BYTES + downloaded))
+					if [ "$download_failed" -eq 0 ] && [ "$downloaded" -ge "$DOWNLOAD_BYTES" ]; then
 						download_ok=1
 					fi
-					speed="$(awk '{print $1}' "$DOWNLOAD_RESULT")"
-					size="$(awk '{print int($2)}' "$DOWNLOAD_RESULT")"
-					case "$size" in ''|*[!0-9]*) size=0 ;; esac
-					TRAFFIC_BYTES=$((TRAFFIC_BYTES + size))
 					if [ "$download_ok" -eq 1 ]; then
-						DOWNLOAD_MBPS="$(awk -v bytes_per_second="$speed" 'BEGIN { printf "%.3f", bytes_per_second * 8 / 1000000 }')"
+						DOWNLOAD_MBPS="$(awk -v bytes="$downloaded" -v seconds="$download_elapsed" 'BEGIN { if (seconds > 0) printf "%.3f", bytes * 8 / seconds / 1000000; else print "0.000" }')"
 					else
-						ERROR='Isolated throughput request failed'
+						ERROR="Throughput failed: curl $curl_status, HTTP $http_code, $downloaded bytes received"
 					fi
 				else
 					ERROR='Temporary sing-box instance exited during startup'
@@ -228,9 +253,9 @@ while IFS="$TAB" read -r NODE NODE_TYPE; do
 	fi
 
 	SCORE="$(score_profile "$PROFILE" "$LATENCY" "$JITTER" "$SUCCESS_PCT" "$DOWNLOAD_MBPS" "$TARGET_DOWNLOAD_MBPS")" || SCORE=0
-	store append "$STATE_PATH" "$RESULT_PATH" "$NODE" "$NODE_TYPE" "$LATENCY" "$LATENCY_MIN" "$LATENCY_MAX" "$JITTER" "$SUCCESS_PCT" "$LOSS_PCT" "$LATENCY_P95" "$LATENCY_SPIKES" "$SUCCESSFUL" "$ATTEMPTS" "$DOWNLOAD_MBPS" "$SCORE" "$ERROR" >/dev/null 2>&1 || true
+	store append "$STATE_PATH" "$RESULT_PATH" "$NODE" "$NODE_DISPLAY_NAME" "$NODE_TYPE" "$LATENCY" "$LATENCY_MIN" "$LATENCY_MAX" "$JITTER" "$SUCCESS_PCT" "$LOSS_PCT" "$LATENCY_P95" "$LATENCY_SPIKES" "$SUCCESSFUL" "$ATTEMPTS" "$DOWNLOAD_MBPS" "$SCORE" "$ERROR" >/dev/null 2>&1 || true
 	COMPLETED=$((COMPLETED + 1))
-	store progress "$STATE_PATH" "$RESULT_PATH" '' "$COMPLETED" "$TRAFFIC_BYTES" >/dev/null 2>&1 || true
+	store progress "$STATE_PATH" "$RESULT_PATH" '' '' "$COMPLETED" "$TRAFFIC_BYTES" >/dev/null 2>&1 || true
 done < "$NODES_FILE"
 
 finish_job completed 'Benchmark completed'

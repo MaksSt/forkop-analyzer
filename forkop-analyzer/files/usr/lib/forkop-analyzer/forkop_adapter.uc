@@ -6,6 +6,7 @@ let uci = require('uci').cursor();
 const FORKOP_BIN = '/usr/bin/forkop';
 const FORKOP_INIT = '/etc/init.d/forkop';
 const SING_BOX_BIN = '/usr/bin/sing-box';
+const SECTION_CACHE_DIR = '/var/run/forkop/section-cache';
 const MIN_FORKOP_VERSION = '1.0.5';
 const MIN_SING_BOX_VERSION = '1.12.4';
 
@@ -158,6 +159,44 @@ function get_subscriptions() {
 	return subscriptions;
 }
 
+function safe_cache_section_name(value) {
+	return match(as_string(value), /^[A-Za-z0-9_-]+$/) != null;
+}
+
+function safe_display_name(value) {
+	value = trim(replace(as_string(value), /[\t\r\n]/g, ' '));
+	return length(value) > 256 ? substr(value, 0, 256) : value;
+}
+
+function get_outbound_display_names() {
+	let names = {};
+	try {
+		uci.foreach('forkop', 'section', function(section) {
+			let section_name = as_string(section['.name']);
+			if (!safe_cache_section_name(section_name))
+				return;
+
+			let cache = read_json_file(SECTION_CACHE_DIR + '/' + section_name + '.json');
+			let metadata = type(cache) == 'object' && type(cache.outboundMetadata) == 'object'
+				? cache.outboundMetadata
+				: null;
+			let cached_names = type(metadata) == 'object' && type(metadata.names) == 'object'
+				? metadata.names
+				: {};
+
+			for (let tag in keys(cached_names)) {
+				tag = as_string(tag);
+				let display_name = safe_display_name(cached_names[tag]);
+				if (tag != '' && display_name != '')
+					names[tag] = display_name;
+			}
+		});
+	}
+	catch (e) {
+	}
+	return names;
+}
+
 function safe_outbound(outbound) {
 	if (type(outbound) != 'object')
 		return null;
@@ -179,11 +218,14 @@ function get_outbounds() {
 	let result = [];
 	if (type(config) != 'object' || type(config.outbounds) != 'array')
 		return result;
+	let display_names = get_outbound_display_names();
 
 	for (let outbound in config.outbounds) {
 		let item = safe_outbound(outbound);
-		if (item != null)
+		if (item != null) {
+			item.display_name = as_string(display_names[item.tag] || item.tag);
 			push(result, item);
+		}
 	}
 	return result;
 }
@@ -214,6 +256,89 @@ function get_selectors() {
 		});
 	}
 	return selectors;
+}
+
+
+// Мониторинг использует только live now; default не доказывает активный маршрут.
+function monitor_target(proxies, outbounds, requested) {
+	let selector = as_string(requested);
+	if (selector == '') {
+		for (let item in outbounds) {
+			if (item.type == 'selector' && selector == '')
+				selector = item.tag;
+			if (item.tag == 'vpn-out' && item.group) {
+				selector = item.tag;
+				break;
+			}
+		}
+	}
+	let result = { selector, tag: '', name: '', state: 'unknown', latency_ms: null, reason: 'api_unavailable' };
+	if (proxies == null)
+		return result;
+	result.reason = 'selection_unavailable';
+	let tag = selector;
+	let seen = {};
+	for (let depth = 0; depth < 32; depth++) {
+		if (tag == '' || seen[tag] || type(proxies[tag]) != 'object')
+			return result;
+		seen[tag] = true;
+		let live = proxies[tag];
+		if (type(live.all) == 'array') {
+			let next = as_string(live.now);
+			if (index(live.all, next) < 0)
+				return result;
+			tag = next;
+			continue;
+		}
+		result.tag = tag;
+		result.name = tag;
+		for (let item in outbounds)
+			if (item.tag == tag)
+				result.name = item.display_name || tag;
+		result.reason = 'probe_unavailable';
+		return result;
+	}
+	return result;
+}
+
+function monitor_proxies() {
+	// Forkop get_proxies сам не ограничивает время curl.
+	let response = capture([ 'timeout', '5', FORKOP_BIN, 'clash_api', 'get_proxies' ]);
+	let parsed = response.status == 0 ? parse_json(response.output) : null;
+	return type(parsed) == 'object' && type(parsed.proxies) == 'object' ? parsed.proxies : null;
+}
+
+function monitor_result(before, after, probe) {
+	if (after.tag == '')
+		return after;
+	if (before.tag != after.tag) {
+		after.reason = 'changed_during_probe';
+		return after;
+	}
+	if (type(probe) == 'object') {
+		if ((type(probe.delay) == 'int' || type(probe.delay) == 'double') && probe.delay > 0 && probe.delay <= 5000) {
+			after.state = 'up';
+			after.latency_ms = probe.delay;
+			after.reason = '';
+		}
+		// Только подтверждённые ответы delay API считаются неудачными пробами.
+		else if (probe.delay === 0 || probe.message == 'Timeout' || probe.message == 'An error occurred in the delay test') {
+			after.state = 'down';
+			after.reason = 'probe_failed';
+		}
+	}
+	return after;
+}
+
+function get_monitor_sample(selector) {
+	let outbounds = get_outbounds();
+	let before = monitor_target(monitor_proxies(), outbounds, selector);
+	if (before.tag == '')
+		return before;
+	let response = capture([ 'timeout', '8', FORKOP_BIN, 'clash_api', 'get_proxy_latency', before.tag, '5000' ]);
+	let probe = response.status == 0 ? parse_json(response.output) : null;
+	let after = monitor_target(monitor_proxies(), outbounds, before.selector);
+	return monitor_result(before, after, probe);
 }
 
 function get_benchmark_nodes(selector) {
@@ -254,7 +379,7 @@ function get_benchmark_nodes(selector) {
 
 		let blocked_type = item.type == 'direct' || item.type == 'block' || item.type == 'dns';
 		if (!blocked_type)
-			push(result, { tag: item.tag, type: item.type });
+			push(result, { tag: item.tag, display_name: item.display_name, type: item.type });
 	}
 
 	for (let group in selected_groups)
@@ -327,6 +452,111 @@ function isolated_path_safe(path) {
 	return substr(path, 0, 21) == '/tmp/forkop-analyzer/' && index(path, '..') < 0;
 }
 
+function shallow_copy(value) {
+	let result = {};
+	if (type(value) != 'object')
+		return result;
+	for (let key in keys(value))
+		result[key] = value[key];
+	return result;
+}
+
+function outbound_by_tag(config, tag) {
+	for (let outbound in (type(config.outbounds) == 'array' ? config.outbounds : []))
+		if (as_string(outbound.tag) == as_string(tag))
+			return outbound;
+	return null;
+}
+
+function collect_outbound_dependencies(config, tag, result, seen) {
+	tag = as_string(tag);
+	if (tag == '' || seen[tag])
+		return true;
+	let outbound = outbound_by_tag(config, tag);
+	if (type(outbound) != 'object')
+		return false;
+	seen[tag] = true;
+	let detour = as_string(outbound.detour || '');
+	if (detour != '' && !collect_outbound_dependencies(config, detour, result, seen))
+		return false;
+	push(result, outbound);
+	return true;
+}
+
+function isolated_outbounds(config, outbound_tag) {
+	let result = [];
+	let seen = {};
+	if (!collect_outbound_dependencies(config, outbound_tag, result, seen))
+		return null;
+
+	let direct = outbound_by_tag(config, 'direct-out');
+	if (type(direct) != 'object') {
+		direct = { type: 'direct', tag: 'forkop-analyzer-direct' };
+	}
+	if (!seen[as_string(direct.tag)])
+		push(result, direct);
+
+	return { values: result, direct_tag: as_string(direct.tag) };
+}
+
+function usable_dns_server(server) {
+	return type(server) == 'object' && as_string(server.tag) != '' && as_string(server.type) != 'tailscale';
+}
+
+function find_dns_server(servers, tag) {
+	tag = as_string(tag);
+	for (let server in servers)
+		if (usable_dns_server(server) && as_string(server.tag) == tag)
+			return server;
+	return null;
+}
+
+function isolated_dns(config, outbound_tag) {
+	let source = type(config.dns) == 'object' ? config.dns : {};
+	let servers = type(source.servers) == 'array' ? source.servers : [];
+	let bootstrap = find_dns_server(servers, 'bootstrap-dns-server');
+	if (bootstrap == null)
+		for (let server in servers)
+			if (usable_dns_server(server) && as_string(server.type) == 'udp') {
+				bootstrap = server;
+				break;
+			}
+	if (bootstrap == null)
+		for (let server in servers)
+			if (usable_dns_server(server)) {
+				bootstrap = server;
+				break;
+			}
+	if (bootstrap == null)
+		return null;
+
+	let preferred_tag = as_string(source.final || '');
+	let primary = find_dns_server(servers, preferred_tag);
+	if (primary == null && type(config.route) == 'object')
+		primary = find_dns_server(servers, config.route.default_domain_resolver);
+	if (primary == null)
+		primary = bootstrap;
+
+	let bootstrap_copy = shallow_copy(bootstrap);
+	delete bootstrap_copy.detour;
+	let isolated_servers = [ bootstrap_copy ];
+	let final_tag = as_string(bootstrap_copy.tag);
+	if (as_string(primary.tag) != as_string(bootstrap.tag)) {
+		let primary_copy = shallow_copy(primary);
+		primary_copy.detour = outbound_tag;
+		push(isolated_servers, primary_copy);
+		final_tag = as_string(primary_copy.tag);
+	}
+
+	return {
+		servers: isolated_servers,
+		rules: [],
+		final: final_tag,
+		strategy: as_string(source.strategy || 'prefer_ipv4'),
+		independent_cache: true
+	};
+}
+
 function prepare_isolated_config(outbound_tag, output_path, listen_port) {
 	let config = runtime_config();
 	listen_port = int(listen_port || 0);
@@ -336,8 +566,13 @@ function prepare_isolated_config(outbound_tag, output_path, listen_port) {
 		return { success: false, error: { code: 'OUTBOUND_NOT_FOUND', message: 'Requested leaf outbound is not present in runtime config' } };
 	if (!isolated_path_safe(output_path) || listen_port < 1024 || listen_port > 65535)
 		return { success: false, error: { code: 'INVALID_ISOLATION_TARGET', message: 'Unsafe config path or listen port' } };
-	if (type(config.endpoints) == 'array' && length(config.endpoints) > 0)
-		return { success: false, error: { code: 'ENDPOINTS_UNSUPPORTED', message: 'Isolated mode is disabled when runtime endpoints are configured' } };
+
+	let outbounds = isolated_outbounds(config, outbound_tag);
+	if (outbounds == null)
+		return { success: false, error: { code: 'OUTBOUND_DEPENDENCY_UNSUPPORTED', message: 'Selected outbound depends on an unavailable endpoint or outbound' } };
+	let dns = isolated_dns(config, outbound_tag);
+	if (dns == null)
+		return { success: false, error: { code: 'DNS_UNAVAILABLE', message: 'No endpoint-independent DNS server is available' } };
 
 	config.inbounds = [ {
 		type: 'mixed',
@@ -345,19 +580,23 @@ function prepare_isolated_config(outbound_tag, output_path, listen_port) {
 		listen: '127.0.0.1',
 		listen_port
 	} ];
-
-	if (type(config.route) != 'object')
-		config.route = {};
-	config.route.rules = [ {
+	config.outbounds = outbounds.values;
+	config.dns = dns;
+	config.route = {
+		rules: [ {
 		action: 'route',
 		inbound: [ 'forkop-analyzer-in' ],
 		outbound: outbound_tag
-	} ];
+		} ],
+		final: outbounds.direct_tag,
+		auto_detect_interface: true,
+		default_domain_resolver: as_string(dns.servers[0].tag)
+	};
 
-	if (type(config.experimental) == 'object') {
-		delete config.experimental.clash_api;
-		delete config.experimental.cache_file;
-	}
+	delete config.log;
+	delete config.endpoints;
+	delete config.services;
+	delete config.experimental;
 	delete config.ntp;
 
 	if (fs.writefile(output_path, sprintf('%J\n', config)) == null)
@@ -376,7 +615,6 @@ function get_capabilities() {
 	let compatible = forkop_installed && version_at_least(forkop_version, MIN_FORKOP_VERSION);
 	let singbox_compatible = file_executable(SING_BOX_BIN) && version_at_least(singbox_version, MIN_SING_BOX_VERSION);
 	let runtime_available = type(config) == 'object' && type(config.outbounds) == 'array';
-	let endpoints_safe = type(config) != 'object' || type(config.endpoints) != 'array' || length(config.endpoints) == 0;
 
 	return {
 		forkop_installed,
@@ -388,8 +626,8 @@ function get_capabilities() {
 		subscriptions_supported: compatible,
 		clash_api_available: clash.available && clash_live,
 		selector_switch_available: compatible && clash_live,
-		isolated_benchmark_supported: compatible && singbox_compatible && runtime_available && endpoints_safe && file_executable('/usr/bin/curl'),
-		temporary_singbox_supported: singbox_compatible && runtime_available && endpoints_safe,
+		isolated_benchmark_supported: compatible && singbox_compatible && runtime_available && file_executable('/usr/bin/curl'),
+		temporary_singbox_supported: singbox_compatible && runtime_available,
 		minimum_forkop_version: MIN_FORKOP_VERSION,
 		minimum_singbox_version: MIN_SING_BOX_VERSION
 	};
@@ -401,8 +639,12 @@ return {
 	get_singbox_version,
 	get_runtime_config_path,
 	get_subscriptions,
+	get_outbound_display_names,
 	get_outbounds,
 	get_selectors,
+	monitor_target,
+	monitor_result,
+	get_monitor_sample,
 	get_benchmark_nodes,
 	get_current_node,
 	select_node,
