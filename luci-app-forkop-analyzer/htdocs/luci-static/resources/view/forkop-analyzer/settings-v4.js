@@ -1,7 +1,7 @@
 'use strict';
 'require view';
 'require form';
-'require forkop-analyzer.ui-v1 as presentation';
+'require forkop-analyzer.ui-v2 as presentation';
 
 return view.extend({
 	addFooter: function() {

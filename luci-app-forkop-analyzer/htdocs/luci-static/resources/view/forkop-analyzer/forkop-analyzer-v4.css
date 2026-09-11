@@ -216,6 +216,8 @@
 	width: 100%;
 	height: auto;
 	min-height: 175px;
+	user-select: none;
+	cursor: crosshair;
 	color: var(--fm-muted);
 	overflow: visible;
 }
@@ -244,6 +246,7 @@
 	stroke-width: 2;
 	pointer-events: none;
 }
+.forkop-monitor-chart:focus:not(:focus-visible) { outline: none; }
 .forkop-monitor-chart:focus-visible, .forkop-monitor select:focus-visible, .forkop-monitor summary:focus-visible {
 	outline: 2px solid var(--fm-muted);
 	outline-offset: 3px;
@@ -264,7 +267,39 @@
 	overflow-wrap: anywhere;
 	font-variant-numeric: tabular-nums;
 }
-.forkop-monitor-tooltip[hidden] {
+.forkop-monitor-selection {
+	fill: #3b82f6;
+	fill-opacity: .18;
+	stroke: #3b82f6;
+	stroke-width: 1;
+	pointer-events: none;
+}
+.forkop-monitor-selection-label {
+	position: absolute;
+	top: .4rem;
+	left: 50%;
+	transform: translateX(-50%);
+	max-width: calc(100% - 16px);
+	padding: .35rem .6rem;
+	border: 1px solid var(--fm-border);
+	border-radius: 6px;
+	background: var(--fm-raised);
+	color: var(--fm-text);
+	font-size: .78rem;
+	font-variant-numeric: tabular-nums;
+	pointer-events: none;
+}
+.forkop-monitor-zoom {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: .5rem;
+	margin: .9rem 0;
+	font-size: .8rem;
+	color: var(--fm-muted);
+}
+.forkop-monitor-tooltip[hidden], .forkop-monitor-selection-label[hidden] {
 	display: none;
 }
 .forkop-monitor-tip-time {

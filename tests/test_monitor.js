@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const source = fs.readFileSync(path.join(__dirname, '../luci-app-forkop-analyzer/htdocs/luci-static/resources/forkop-analyzer/monitor-v3.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../luci-app-forkop-analyzer/htdocs/luci-static/resources/forkop-analyzer/monitor-v4.js'), 'utf8');
 const monitor = new Function('baseclass', 'dom', '_', source)({ extend: value => value }, {}, text => text);
 function sample(at, tag, state = 'up', selector = 'vpn-out') {
 	return { at, tag, name: tag, selector, state, latency_ms: state === 'up' ? 100 + at % 70 : null, interval: 15 };
@@ -76,4 +76,23 @@ const reusedTag = {format:'compact-v1', routes:[
 ], samples:[[100,0,'up',100,15,''],[115,1,'up',240,15,'']]};
 m = monitor.buildModel(reusedTag, 'vpn-out', 1, 130);
 assert.deepEqual(m.rows.map(r => [r.name,r.checks]), [['Netherlands',1],['Germany',1]], 'compact routes retain historical identities');
-console.log('Monitor graph, outage, switch and server identity tests passed.');
+// Приближение обрезает интервалы, сохраняя исходные соседние пробы и текущий сервер.
+const zoomSamples = [sample(100,'A'),sample(115,'A','down'),sample(130,'A','down'),sample(145,'B'),sample(160,'B'),sample(175,'C')];
+const zoomModel = range => monitor.buildModel({samples:zoomSamples,interval:15},'vpn-out',1,190,range);
+m=zoomModel({from:110,to:150});
+assert.equal(m.from,110); assert.equal(m.to,150); assert.equal(m.zoomed,true);
+assert.equal(m.total.up,10); assert.equal(m.total.down,30); assert.equal(m.total.unknown,0);
+assert.equal(m.total.checks,3); assert.equal(m.total.losses,1); assert.equal(m.total.switches,1);
+assert.equal(m.last.tag,'C','live header stays on the current server outside the selected history');
+assert.deepEqual(m.rows.map(r=>r.tag),['A','B'],'samples after the selection do not enter statistics');
+assert.ok(m.points.every(p=>p.at>=110&&p.end<=150),'all intervals are clipped to the range');
+m=zoomModel({from:120,to:140});
+assert.equal(m.total.losses,0,'zoom starting inside an outage does not invent another loss');
+assert.equal(m.total.down,20); assert.equal(m.total.switches,0);
+m=monitor.buildModel({samples:[sample(100,'A'),sample(200,'B')]},'vpn-out',1,220,{from:150,to:180});
+assert.equal(m.points.length,0); assert.equal(m.total.unknown,30,'a selected collection gap remains unknown');
+m=zoomModel({from:50,to:110});
+assert.equal(m.total.up,10); assert.equal(m.total.unknown,50,'time before the first sample is unknown in an explicit range');
+assert.equal(zoomModel(null).zoomed,false,'reset restores the rolling period');
+assert.equal(zoomModel({from:150,to:110}).zoomed,false,'invalid range cannot produce inverted intervals');
+console.log('Monitor graph, outage, switch, server identity and zoom tests passed.');

@@ -7,7 +7,7 @@ function theme() {
 }
 
 function stylesheet() {
-	return E('link', { rel: 'stylesheet', href: L.resource('view/forkop-analyzer/forkop-analyzer-v3.css') });
+	return E('link', { rel: 'stylesheet', href: L.resource('view/forkop-analyzer/forkop-analyzer-v4.css') });
 }
 
 function heading(title, description) {

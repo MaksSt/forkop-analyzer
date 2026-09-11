@@ -52,10 +52,12 @@ function decode(data) {
 	}) });
 }
 
-function buildModel(data, selector, hours, now) {
+function buildModel(data, selector, hours, now, range) {
 	data = decode(data);
 	var all = (data.samples || []).filter(function(s) { return s && Number.isFinite(s.at) && s.at <= now; });
-	var from = now - hours * 3600;
+	var zoomed = range && Number.isFinite(range.from) && Number.isFinite(range.to) && range.from < Math.min(now, range.to);
+	var to = zoomed ? Math.min(now, range.to) : now;
+	var from = zoomed ? range.from : now - hours * 3600;
 	var rows = Object.create(null);
 	var points = [], segments = [], events = [];
 	var total = { losses: 0, switches: 0, up: 0, down: 0, unknown: 0, failed: 0, checks: 0 };
@@ -66,8 +68,9 @@ function buildModel(data, selector, hours, now) {
 		var next = all[i + 1];
 		if (s.selector !== selector) { activeSegment = null; return; }
 		last = s;
+		if (s.at > to) { activeSegment = null; return; }
 		var limit = (s.interval || data.interval || 15) * 2 + 5;
-		var end = Math.min(now, next ? next.at : now, s.at + limit);
+		var end = Math.min(to, next ? next.at : to, s.at + limit);
 		if (end < from) { activeSegment = null; return; }
 		var start = Math.max(from, s.at);
 		var span = Math.max(0, end - start);
@@ -112,9 +115,9 @@ function buildModel(data, selector, hours, now) {
 		}
 		else activeSegment = null;
 	});
-	var observedStart = points.length ? points[0].at : now;
-	total.unknown = Math.max(total.unknown, now - observedStart - total.up - total.down);
-	return { from: from, to: now, points: points, segments: segments, rows: Object.keys(rows).map(function(tag) { return rows[tag]; }), total: total, events: events.reverse(), last: last };
+	var observedStart = zoomed ? from : (points.length ? points[0].at : to);
+	total.unknown = Math.max(total.unknown, to - observedStart - total.up - total.down);
+	return { from: from, to: to, zoomed: !!zoomed, points: points, segments: segments, rows: Object.keys(rows).map(function(tag) { return rows[tag]; }), total: total, events: events.reverse(), last: last };
 }
 
 function svgElement(tag, attrs) {
@@ -132,16 +135,16 @@ function stateLabel(sample) {
 	return _('Результат проверки недоступен');
 }
 
-function renderChart(model) {
+function renderChart(model, changeRange) {
 	var width = Math.max(280, Math.min(1100, window.innerWidth - 100)), height = 238, left = 44, right = 16, top = 18, bottom = 32;
-	var from = model.points.length ? Math.max(model.from, Math.min(model.to - 60, model.points[0].at)) : model.from;
+	var from = !model.zoomed && model.points.length ? Math.max(model.from, Math.min(model.to - 60, model.points[0].at)) : model.from;
 	var max = 100;
 	model.segments.forEach(function(segment) { segment.points.forEach(function(p) { max = Math.max(max, p.value); }); });
 	max = Math.ceil(max * 1.15 / 50) * 50;
 	var x = function(at) { return left + (at - from) / (model.to - from) * (width - left - right); };
 	var y = function(value) { return height - bottom - value / max * (height - top - bottom); };
-	var svg = svgElement('svg', { viewBox: '0 0 ' + width + ' ' + height, 'class': 'forkop-monitor-chart', tabindex: '0', role: 'img',
-		'aria-label': _('Задержка активного VPN-сервера. Стрелки влево и вправо — измерения; Home и End — начало и конец. Цвет обозначает сервер, разрыв — отсутствие успешной проверки.') });
+	var svg = svgElement('svg', { viewBox: '0 0 ' + width + ' ' + height, 'class': 'forkop-monitor-chart', tabindex: '0', role: 'img', 'data-from': from, 'data-to': model.to,
+		'aria-label': _('Задержка активного VPN-сервера. Стрелки влево и вправо — измерения; Home и End — начало и конец. Shift со стрелками выделяет диапазон, Enter приближает, Escape отменяет выделение. ЛКМ с протягиванием — приблизить, двойной щелчок — сбросить. Цвет обозначает сервер, разрыв — отсутствие успешной проверки.') });
 	for (var i = 0; i <= 4; i++) {
 		var value = max * i / 4;
 		svg.appendChild(svgElement('line', { x1: left, x2: width - right, y1: y(value), y2: y(value), 'class': 'forkop-monitor-gridline' }));
@@ -150,10 +153,11 @@ function renderChart(model) {
 		svg.appendChild(label);
 	}
 	var unit = svgElement('text', { x: left, y: 12 }); unit.textContent = 'ms'; svg.appendChild(unit);
-	for (var tick = 0; tick <= 4; tick++) {
-		var at = from + (model.to - from) * tick / 4;
-		var text = svgElement('text', { x: x(at), y: height - 12, 'text-anchor': tick === 0 ? 'start' : (tick === 4 ? 'end' : 'middle') });
-		text.textContent = new Date(at * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', hour12: false });
+	var ticks = width < 500 && model.to - from < 600 ? 2 : 4;
+	for (var tick = 0; tick <= ticks; tick++) {
+		var at = from + (model.to - from) * tick / ticks;
+		var text = svgElement('text', { x: x(at), y: height - 12, 'text-anchor': tick === 0 ? 'start' : (tick === ticks ? 'end' : 'middle') });
+		text.textContent = new Date(at * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: model.to - from < 600 ? '2-digit' : undefined, hour12: false });
 		svg.appendChild(text);
 	}
 	// Объединяем соседние неудачные пробы: один полупрозрачный участок на эпизод.
@@ -176,15 +180,19 @@ function renderChart(model) {
 		if (segment.points.length === 1)
 			svg.appendChild(svgElement('circle', { cx: x(last.at), cy: y(last.value), r: '3', fill: color(segment.key) }));
 	});
+	var selection = svgElement('rect', { y: top, height: height - bottom - top, 'class': 'forkop-monitor-selection', visibility: 'hidden' });
+	svg.appendChild(selection);
 	var cursor = svgElement('line', { y1: top, y2: height - bottom, 'class': 'forkop-monitor-cursor', visibility: 'hidden' });
 	var marker = svgElement('circle', { r: '4.5', 'class': 'forkop-monitor-point', visibility: 'hidden' });
 	svg.appendChild(cursor);
 	svg.appendChild(marker);
 	var tooltip = E('div', { 'class': 'forkop-monitor-tooltip', role: 'tooltip', hidden: true });
 	var announcement = E('span', { 'class': 'forkop-monitor-sr', 'aria-live': 'polite', 'aria-atomic': 'true' });
-	var plot = E('div', { 'class': 'forkop-monitor-plot' }, [ svg, tooltip, announcement ]);
+	var selectionLabel = E('div', { 'class': 'forkop-monitor-selection-label', hidden: true });
+	var plot = E('div', { 'class': 'forkop-monitor-plot' }, [ svg, tooltip, selectionLabel, announcement ]);
 	var currentIndex = Math.max(0, model.points.length - 1);
 	var interaction = '';
+	var drag = null, keyboardStart = null, keyboardEnd = null;
 
 	function hide() {
 		tooltip.hidden = true;
@@ -244,32 +252,104 @@ function renderChart(model) {
 		}
 	}
 
+	function localPoint(event) {
+		var screen = svg.createSVGPoint(); screen.x = event.clientX; screen.y = event.clientY;
+		return screen.matrixTransform(svg.getScreenCTM().inverse());
+	}
+	function inside(point) {
+		return point.x >= left && point.x <= width - right && point.y >= top && point.y <= height - bottom;
+	}
+	function atX(value) {
+		return from + (Math.max(left, Math.min(width - right, value)) - left) / (width - left - right) * (model.to - from);
+	}
+	function showSelection(start, end) {
+		hide();
+		plot.dataset.inspecting = 'true';
+		selection.setAttribute('x', x(Math.min(start, end)));
+		selection.setAttribute('width', Math.abs(x(end) - x(start)));
+		selection.setAttribute('visibility', 'visible');
+		selectionLabel.hidden = false;
+		dom.content(selectionLabel, timeLabel(Math.min(start, end)) + ' — ' + timeLabel(Math.max(start, end)));
+	}
+	function cancelSelection() {
+		var pointerId = drag && drag.id;
+		drag = null; keyboardStart = null; keyboardEnd = null;
+		selection.setAttribute('visibility', 'hidden');
+		selectionLabel.hidden = true;
+		hide();
+		if (pointerId != null && svg.hasPointerCapture(pointerId)) svg.releasePointerCapture(pointerId);
+	}
+	function zoom(start, end, keyboard) {
+		cancelSelection();
+		if (Math.abs(end - start) >= 1)
+			changeRange({ from: Math.min(start, end), to: Math.max(start, end) }, keyboard);
+	}
 	function pointer(event) {
 		interaction = 'pointer';
-		var screen = svg.createSVGPoint(); screen.x = event.clientX; screen.y = event.clientY;
-		var local = screen.matrixTransform(svg.getScreenCTM().inverse());
-		if (local.x < left || local.x > width - right || local.y < top || local.y > height - bottom) { hide(); return; }
-		var at = from + (local.x - left) / (width - left - right) * (model.to - from);
-		var index = 0;
+		var local = localPoint(event);
+		if (drag) {
+			if (event.pointerId !== drag.id) return;
+			drag.end = atX(local.x);
+			if (Math.abs(event.clientX - drag.clientX) >= 6) drag.moved = true;
+			if (drag.moved) showSelection(drag.start, drag.end);
+			return;
+		}
+		if (keyboardStart != null) return;
+		if (!inside(local)) { hide(); return; }
+		var at = atX(local.x), index = 0;
 		for (var i = 0; i < model.points.length; i++) {
 			if (model.points[i].at > at) break;
 			index = i;
 		}
 		showPoint(index, at, event);
 	}
+	svg.addEventListener('pointerdown', function(event) {
+		if (event.button !== 0 || event.pointerType !== 'mouse' || !inside(localPoint(event))) return;
+		event.preventDefault();
+		cancelSelection();
+		svg.focus({ preventScroll: true });
+		hide();
+		var at = atX(localPoint(event).x);
+		drag = { id: event.pointerId, start: at, end: at, clientX: event.clientX, moved: false };
+		plot.dataset.inspecting = 'true';
+		svg.setPointerCapture(event.pointerId);
+	});
 	svg.addEventListener('pointermove', pointer);
+	svg.addEventListener('pointerup', function(event) {
+		if (!drag || event.pointerId !== drag.id) return;
+		var current = drag, end = atX(localPoint(event).x);
+		if (current.moved && Math.abs(event.clientX - current.clientX) >= 6) zoom(current.start, end, false);
+		else { cancelSelection(); pointer(event); }
+	});
+	svg.addEventListener('pointercancel', cancelSelection);
+	svg.addEventListener('lostpointercapture', function() { if (drag) cancelSelection(); });
 	svg.addEventListener('click', pointer);
-	svg.addEventListener('pointerleave', function() { if (interaction === 'pointer') hide(); });
-	svg.addEventListener('blur', hide);
+	svg.addEventListener('dblclick', function(event) {
+		if (event.button !== 0) return;
+		event.preventDefault(); cancelSelection(); changeRange(null, false);
+	});
+	svg.addEventListener('pointerleave', function() { if (!drag && keyboardStart == null && interaction === 'pointer') hide(); });
+	svg.addEventListener('blur', cancelSelection);
 	svg.addEventListener('focus', function() { interaction = 'keyboard'; showPoint(currentIndex); });
 	svg.addEventListener('keydown', function(event) {
-		if (event.key === 'Escape') { hide(); return; }
-		if ([ 'ArrowLeft', 'ArrowRight', 'Home', 'End' ].indexOf(event.key) < 0) return;
+		if (event.key === 'Escape') { event.preventDefault(); cancelSelection(); return; }
+		if (event.key === 'Enter' && keyboardStart != null) {
+			event.preventDefault(); zoom(keyboardStart, keyboardEnd, true); return;
+		}
+		if ([ 'ArrowLeft', 'ArrowRight', 'Home', 'End' ].indexOf(event.key) < 0 || !model.points.length) return;
 		event.preventDefault(); interaction = 'keyboard';
+		if (event.shiftKey && keyboardStart == null) keyboardStart = model.points[currentIndex].at;
+		else if (!event.shiftKey) cancelSelection();
 		if (event.key === 'Home') currentIndex = 0;
 		else if (event.key === 'End') currentIndex = model.points.length - 1;
 		else currentIndex += event.key === 'ArrowLeft' ? -1 : 1;
-		showPoint(Math.max(0, Math.min(model.points.length - 1, currentIndex)));
+		currentIndex = Math.max(0, Math.min(model.points.length - 1, currentIndex));
+		if (keyboardStart != null) {
+			keyboardEnd = model.points[currentIndex].at;
+			showSelection(keyboardStart, keyboardEnd);
+			dom.content(announcement, selectionLabel.textContent + '. ' + _('Enter — приблизить, Escape — отменить'));
+		}
+		else showPoint(currentIndex);
 	});
 	return plot;
 }
@@ -333,12 +413,17 @@ function renderStats(model, live) {
 }
 
 function create(initial) {
-	var data = decode(initial || {}), hours = 1, selected = '';
+	var data = decode(initial || {}), hours = 1, selected = '', range = null;
 	var chartTarget = E('div', { 'class': 'forkop-monitor-content' });
 	var groupInput = E('select', { 'class': 'cbi-input-select', 'aria-label': _('Группа мониторинга') });
 	var rangeInput = E('select', { 'class': 'cbi-input-select', 'aria-label': _('Период графика') }, [
 		E('option', { value: '1' }, _('1 час')), E('option', { value: '6' }, _('6 часов')), E('option', { value: '24' }, _('24 часа'))
 	]);
+	function changeRange(next, keyboard) {
+		range = next;
+		draw();
+		if (keyboard) chartTarget.querySelector('.forkop-monitor-chart').focus({ preventScroll: true });
+	}
 	function draw() {
 		var textColor = getComputedStyle(document.body).color.match(/[0-9.]+/g) || [ 0, 0, 0 ];
 		node.dataset.theme = Number(textColor[0]) * .2126 + Number(textColor[1]) * .7152 + Number(textColor[2]) * .0722 > 150 ? 'dark' : 'light';
@@ -346,14 +431,14 @@ function create(initial) {
 		var groups = [];
 		samples.forEach(function(s) { if (s.selector && groups.indexOf(s.selector) < 0) groups.push(s.selector); });
 		var latest = samples[samples.length - 1];
-		if (groups.indexOf(selected) < 0) selected = latest ? latest.selector : '';
+		if (groups.indexOf(selected) < 0) { selected = latest ? latest.selector : ''; range = null; }
 		if (groupInput.dataset.groups !== JSON.stringify(groups)) {
 			dom.content(groupInput, groups.map(function(group) { return E('option', { value: group }, group); }));
 			groupInput.dataset.groups = JSON.stringify(groups);
 		}
 		groupInput.value = selected;
 		var now = Date.now() / 1000;
-		var model = buildModel(data, selected, hours, now);
+		var model = buildModel(data, selected, hours, now, range);
 		var last = model.last;
 		var stale = !last || now - last.at > (last.interval || data.interval || 15) * 2 + 5;
 		var live = !stale && data.enabled !== false && !data.error;
@@ -374,16 +459,20 @@ function create(initial) {
 					E('span', {}, _('Обновлено') + ' ' + timeLabel(last.at))
 				] : [])
 			]),
-			renderChart(model),
+			model.zoomed ? E('div', { 'class': 'forkop-monitor-zoom' }, [
+				E('span', {}, _('Выбранный диапазон') + ': ' + timeLabel(model.from) + ' — ' + timeLabel(model.to)),
+				E('button', { 'class': 'btn cbi-button', type: 'button', click: function() { changeRange(null, true); } }, _('Сбросить масштаб'))
+			]) : '',
+			renderChart(model, changeRange),
 			E('div', { 'class': 'forkop-monitor-legend' }, model.rows.map(function(row) {
 				return E('span', { title: row.tag }, [ E('span', { 'class': 'forkop-monitor-swatch', style: 'background:' + color(row.key), 'aria-hidden': 'true' }), row.name ]);
 			})),
-			E('div', { 'class': 'forkop-monitor-chart-caption' }, [ E('span', {}, _('Наведение или касание — подробности измерения')), E('span', {}, _('Шаг') + ' ' + (data.interval || 15) + ' с') ]),
+			E('div', { 'class': 'forkop-monitor-chart-caption' }, [ E('span', {}, _('Наведение — подробности · ЛКМ и протянуть — приблизить · Двойной щелчок — сброс')), E('span', {}, _('Шаг') + ' ' + (data.interval || 15) + ' с') ]),
 			renderStats(model, live)
 		]);
 	}
-	groupInput.addEventListener('change', function() { selected = groupInput.value; draw(); });
-	rangeInput.addEventListener('change', function() { hours = Number(rangeInput.value); draw(); });
+	groupInput.addEventListener('change', function() { selected = groupInput.value; range = null; draw(); });
+	rangeInput.addEventListener('change', function() { hours = Number(rangeInput.value); range = null; draw(); });
 	var node = E('section', { 'class': 'forkop-analyzer-card forkop-monitor', 'aria-label': _('Мониторинг VPN') }, [
 		E('div', { 'class': 'forkop-monitor-heading' }, [ E('div', {}, [ E('h3', {}, _('Мониторинг VPN')), E('p', {}, _('Задержка и переключения активного сервера')) ]), E('div', { 'class': 'forkop-analyzer-actions' }, [ groupInput, rangeInput ]) ]),
 		chartTarget

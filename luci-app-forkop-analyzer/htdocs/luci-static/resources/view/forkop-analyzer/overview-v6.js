@@ -4,8 +4,8 @@
 'require poll';
 'require dom';
 'require ui';
-'require forkop-analyzer.monitor-v3 as monitor';
-'require forkop-analyzer.ui-v1 as presentation';
+'require forkop-analyzer.monitor-v4 as monitor';
+'require forkop-analyzer.ui-v2 as presentation';
 
 // Версия пути обновляет модуль страницы в кэше LuCI при изменении интерфейса.
 

@@ -16,7 +16,7 @@ forkop-analyzer/files/usr/share/rpcd/ucode/forkop-analyzer
 luci-app-forkop-analyzer/Makefile
 luci-app-forkop-analyzer/root/usr/share/luci/menu.d/luci-app-forkop-analyzer.json
 luci-app-forkop-analyzer/root/usr/share/rpcd/acl.d/luci-app-forkop-analyzer.json
-luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/overview-v5.js
+luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/overview-v6.js
 .github/workflows/build-openwrt-apk.yml
 install.sh
 README.md

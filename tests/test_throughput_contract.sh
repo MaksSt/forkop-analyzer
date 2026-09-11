@@ -4,7 +4,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 CONFIG="$ROOT/forkop-analyzer/files/etc/config/forkop-analyzer"
 WORKER="$ROOT/forkop-analyzer/files/usr/libexec/forkop-analyzer-worker"
-SETTINGS="$ROOT/luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/settings-v3.js"
+SETTINGS="$ROOT/luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/settings-v4.js"
 
 grep -Fq "option download_url 'https://nbg1-speed.hetzner.com/1GB.bin'" "$CONFIG"
 grep -Fq "option download_bytes '1073741824'" "$CONFIG"
