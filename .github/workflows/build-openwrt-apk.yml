@@ -19,8 +19,10 @@ on:
       release_tag:
         description: GitHub Release tag
         required: true
-        default: v0.1.5
+        default: v0.2.0
   push:
+    branches:
+      - main
     tags:
       - "v*"
   pull_request:
@@ -29,6 +31,7 @@ on:
       - "luci-app-forkop-analyzer/**"
       - "tests/**"
       - "scripts/**"
+      - "install.sh"
       - ".github/workflows/build-openwrt-apk.yml"
 
 permissions:
@@ -38,7 +41,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      PROJECT_VERSION: "0.1.5"
+      PROJECT_VERSION: "0.2.0"
       PROJECT_RELEASE: "1"
       FORKOP_SOURCE_SHA: "dd483297be0ac4e52bb8f482e2640238b75af532"
 
@@ -67,6 +70,19 @@ jobs:
 
           [[ "$sdk_url" == "https://downloads.openwrt.org/releases/${openwrt_version}/"* ]]
           [[ "$release_tag" == "v${PROJECT_VERSION}" ]]
+
+          # Do not publish another commit over an existing release tag.
+          if [[ "$upload_release" == "true" ]]; then
+            tag_refs="$(git ls-remote --tags origin "refs/tags/$release_tag" "refs/tags/$release_tag^{}")"
+            tag_sha="$(awk '$2 ~ /\^\{\}$/ { print $1 }' <<< "$tag_refs")"
+            if [[ -z "$tag_sha" ]]; then
+              tag_sha="$(awk 'NR == 1 { print $1 }' <<< "$tag_refs")"
+            fi
+            if [[ -n "$tag_sha" && "$tag_sha" != "$GITHUB_SHA" ]]; then
+              echo "::error::Tag $release_tag points to $tag_sha, not $GITHUB_SHA. Use a new version."
+              exit 1
+            fi
+          fi
 
           echo "OPENWRT_VERSION=$openwrt_version" >> "$GITHUB_ENV"
           echo "SDK_URL=$sdk_url" >> "$GITHUB_ENV"
@@ -152,6 +168,13 @@ jobs:
             "$ucode_bin" -c -o "$output" "$source"
           done < <(find forkop-analyzer/files -type f \( -name '*.uc' -o -path '*/rpcd/ucode/*' \) -print)
 
+      - name: Test monitor backend with SDK host tool
+        run: |
+          "$SDK_DIR/staging_dir/hostpkg/bin/ucode" \
+            -L "$GITHUB_WORKSPACE/tests/fixtures/monitor/*.uc" \
+            -L "$GITHUB_WORKSPACE/forkop-analyzer/files/usr/lib/forkop-analyzer/*.uc" \
+            tests/test_monitor.uc
+
       - name: Build backend APK
         run: |
           cd "$SDK_DIR"
@@ -208,7 +231,16 @@ jobs:
           "$apk_bin" extract --allow-untrusted --no-chown --destination "$RUNNER_TEMP/luci.root" "$luci"
           test -f "$RUNNER_TEMP/backend.root/usr/lib/forkop-analyzer/forkop_adapter.uc"
           test -f "$RUNNER_TEMP/backend.root/usr/share/rpcd/ucode/forkop-analyzer"
-          test -f "$RUNNER_TEMP/luci.root/www/luci-static/resources/view/forkop-analyzer/overview.js"
+          test -f "$RUNNER_TEMP/backend.root/usr/bin/forkop-analyzer-monitor"
+          test -f "$RUNNER_TEMP/backend.root/usr/lib/forkop-analyzer/monitor_store.uc"
+          menu="$RUNNER_TEMP/luci.root/usr/share/luci/menu.d/luci-app-forkop-analyzer.json"
+          test -f "$menu"
+          while IFS= read -r view; do
+            test -f "$RUNNER_TEMP/luci.root/www/luci-static/resources/view/$view.js"
+          done < <(jq -r '.[] | select(.action.type == "view") | .action.path' "$menu")
+          while IFS= read -r source; do
+            test -f "$RUNNER_TEMP/luci.root/www/${source#luci-app-forkop-analyzer/htdocs/}"
+          done < <(find luci-app-forkop-analyzer/htdocs -type f \( -name '*.js' -o -name '*.css' \) -print)
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -230,9 +262,14 @@ jobs:
           cat > "$release_notes" <<EOF
           ## Изменения
 
-            - Добавлены потери latency-запросов через проверяемый outbound, p95 задержки и число всплесков.
-            - Gaming по умолчанию выполняет 20 проб, Full — 8 latency-проб на узел.
-            - Потери отражают неудачные HTTP delay requests через Clash API и не выдаются за ICMP/UDP packet loss.
+          - Фоновый мониторинг активного VPN: общий график задержки, цветные участки при смене сервера, разрывы связи и подсказка у курсора. История за 24 часа собирается на роутере, даже когда страница закрыта; после перезагрузки она начинается заново.
+          - Статистика по серверам: эпизоды потери связи, переходы, средняя задержка, время доступности и журнал событий. Пропуски данных учитываются отдельно от неудачных проб.
+          - Исправлено наследование статистики при замене сервера с прежним tag: история сохраняет название на момент наблюдения. Имена узлов также сохраняются в результатах и экспорте.
+          - Единый адаптивный интерфейс обзора, результатов и настроек; светлая и тёмная темы, компактные блоки совместимости и профилей.
+          - Full создаёт конфигурацию отдельного sing-box из выбранного outbound и его зависимостей. Production endpoints, включая Tailscale, не мешают независимой проверке VPN.
+          - Full по умолчанию скачивает 1 GiB на узел: до 15 узлов и 15 GiB на запуск. Улучшены учёт частичных загрузок, скорость и диагностика ошибок.
+          - Планировщик сохраняет дневной checkpoint между перезагрузками и не повторяет уже запущенную в этот день проверку.
+          - Сборка APK запускается при push в main; тег публикует релиз. Проверка содержимого APK учитывает версионные имена модулей LuCI, backend мониторинга тестируется с ucode из SDK.
 
           ## Совместимость
 
@@ -244,7 +281,7 @@ jobs:
           Скачайте оба APK и выполните:
 
           \`\`\`sh
-          apk add --allow-untrusted --upgrade \\
+          apk add --allow-untrusted \\
             /tmp/forkop-analyzer.apk \\
             /tmp/luci-app-forkop-analyzer.apk
           /etc/init.d/forkop-analyzer restart

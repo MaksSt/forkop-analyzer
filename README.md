@@ -10,9 +10,9 @@ LuCI-приложение и backend для безопасного сравне�
 
 > Full создаёт реальный benchmark-трафик. Перед запуском проверь `max_traffic_mb`, `full_max_nodes` и условия провайдера подписки.
 
-![Макет интерфейса Forkop Analyzer](screenshots/dashboard-mockup.svg)
+![Текущий интерфейс Forkop Analyzer: мониторинг VPN и сравнение серверов](screenshots/dashboard.png)
 
-Изображение выше — документированный макет v0.1.0. Текущий интерфейс переработан; мониторинг и чтение истории проверены на работающем OpenWrt/Forkop. Это не заменяет проверку чистой установки APK и всех профилей benchmark.
+Скриншот текущего интерфейса v0.2.0 в браузере: настоящие компоненты LuCI, демонстрационные названия серверов и результаты измерений. Мониторинг и чтение истории также проверены на работающем OpenWrt/Forkop; чистая установка APK и Full требуют отдельной live-проверки.
 
 ## Возможности
 
@@ -92,14 +92,14 @@ Backend использует только заявленные зависимо�
 
 Надёжный способ:
 
-1. Скачай из [GitHub Release v0.1.5](https://github.com/MaksSt/forkop-analyzer/releases/tag/v0.1.5):
-   - `forkop-analyzer-0.1.5-r1.apk`;
-   - `luci-app-forkop-analyzer-0.1.5-r1.apk`;
+1. Скачай из [GitHub Release v0.2.0](https://github.com/MaksSt/forkop-analyzer/releases/tag/v0.2.0):
+   - `forkop-analyzer-0.2.0-r1.apk`;
+   - `luci-app-forkop-analyzer-0.2.0-r1.apk`;
    - `SHA256SUMS`.
 2. Сверь SHA-256.
 3. Открой **System → Software → Upload Package**.
-4. Загрузи сначала `forkop-analyzer-0.1.5-r1.apk`.
-5. Затем загрузи `luci-app-forkop-analyzer-0.1.5-r1.apk`.
+4. Загрузи сначала `forkop-analyzer-0.2.0-r1.apk`.
+5. Затем загрузи `luci-app-forkop-analyzer-0.2.0-r1.apk`.
 6. Обнови страницу LuCI. Интерфейс появится в **Services → Forkop Analyzer**.
 
 Не вставляй GitHub URL в поле **Download and install package**: этот путь не проверен на целевой версии.
@@ -108,10 +108,10 @@ Backend использует только заявленные зависимо�
 
 ```sh
 wget -O /tmp/forkop-analyzer.apk \
-  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.1.5/forkop-analyzer-0.1.5-r1.apk
+  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.2.0/forkop-analyzer-0.2.0-r1.apk
 
 wget -O /tmp/luci-app-forkop-analyzer.apk \
-  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.1.5/luci-app-forkop-analyzer-0.1.5-r1.apk
+  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.2.0/luci-app-forkop-analyzer-0.2.0-r1.apk
 
 apk add --allow-untrusted \
   /tmp/forkop-analyzer.apk \
@@ -127,7 +127,7 @@ apk add --allow-untrusted \
 ```sh
 wget -O /tmp/install-forkop-analyzer.sh \
   https://raw.githubusercontent.com/MaksSt/forkop-analyzer/main/install.sh
-sh /tmp/install-forkop-analyzer.sh --version v0.1.5
+sh /tmp/install-forkop-analyzer.sh --version v0.2.0
 ```
 
 `install.sh` проверяет OpenWrt/apk, Forkop, package architecture и `SHA256SUMS`; TLS verification не отключается. Доступны `--prerelease`, `--no-start`, `--uninstall`, `--help`.
@@ -137,14 +137,14 @@ sh /tmp/install-forkop-analyzer.sh --version v0.1.5
 Скачай оба APK нового релиза и выполни:
 
 ```sh
-apk add --allow-untrusted --upgrade \
+apk add --allow-untrusted \
   /tmp/forkop-analyzer.apk \
   /tmp/luci-app-forkop-analyzer.apk
 /etc/init.d/forkop-analyzer restart
 /etc/init.d/rpcd restart
 ```
 
-Команда соответствует installer v0.1.5, но ещё не проверена на чистом live OpenWrt 25.12.4.
+Команда соответствует installer v0.2.0, но ещё не проверена на чистом live OpenWrt 25.12.4.
 
 ## Удаление
 
@@ -260,7 +260,7 @@ forkop-analyzer capabilities
 sing-box version
 ```
 
-Нужны sing-box `>=1.12.4`, читаемый runtime config, `curl`, свободный localhost port и отсутствие runtime `endpoints`.
+Нужны sing-box `>=1.12.4`, читаемый runtime config, `curl` и свободный localhost port. Наличие production `endpoints` само по себе не блокирует Full: они не копируются в изолированный instance.
 
 ### Зависший job
 
@@ -306,9 +306,13 @@ make package/luci-app-forkop-analyzer/compile V=s
 
 GitHub Actions скачивает SDK только с `downloads.openwrt.org`, проверяет SDK по official `sha256sums`, pin-ит Forkop commit, собирает оба APK, проверяет contents/dependencies и формирует детерминированные assets:
 
-- `forkop-analyzer-0.1.5-r1.apk`;
-- `luci-app-forkop-analyzer-0.1.5-r1.apk`;
+- `forkop-analyzer-0.2.0-r1.apk`;
+- `luci-app-forkop-analyzer-0.2.0-r1.apk`;
 - `SHA256SUMS`.
+
+Workflow запускается на push в `main`, pull request с изменениями кода/сборки и вручную. Push в `main` сохраняет APK в **Actions → Artifacts**; GitHub Release автоматически создаётся при push тега `v*`, совпадающего с версией пакетов. Ручной запуск публикует релиз только при включённом `upload_release`.
+
+Перед выпуском синхронизируй версии обоих Makefile, installer, workflow, проверок и ссылок README, затем выполни `scripts/check-version.sh`. Существующий тег разрешено пересобирать только из того же коммита: для нового кода нужна новая версия.
 
 ## Тестирование
 
@@ -335,7 +339,6 @@ SDK build — основная integration check. Live checks start/stop/restart
 - Quick и Gaming проверены на реальном OpenWrt 25.12.5 с Forkop; Full требует отдельной live-проверки.
 - Full измеряет download, но не upload.
 - `loss_pct` основан на неудачных HTTP delay requests через outbound, это не ICMP/UDP packet loss.
-- Full не запускается при наличии `endpoints` в runtime config.
 - Benchmark не определяет географию и не ранжирует цену/лимиты подписки.
 - Изменение selector другим процессом во время job фиксируется, но не откатывается.
 - OpenWrt `opkg` не поддерживается.
