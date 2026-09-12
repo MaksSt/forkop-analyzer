@@ -14,7 +14,7 @@
     "order": 10,
     "action": {
       "type": "view",
-      "path": "forkop-analyzer/overview-v6"
+      "path": "forkop-analyzer/overview-v11"
     }
   },
   "admin/services/forkop-analyzer/results": {
@@ -22,7 +22,7 @@
     "order": 20,
     "action": {
       "type": "view",
-      "path": "forkop-analyzer/results-v4"
+      "path": "forkop-analyzer/results-v9"
     }
   },
   "admin/services/forkop-analyzer/settings": {

@@ -12,7 +12,7 @@ LuCI-приложение и backend для безопасного сравне�
 
 ![Текущий интерфейс Forkop Analyzer: мониторинг VPN и сравнение серверов](screenshots/dashboard.png)
 
-Скриншот текущего интерфейса v0.2.0 в браузере: настоящие компоненты LuCI, демонстрационные названия серверов и результаты измерений. Мониторинг и чтение истории также проверены на работающем OpenWrt/Forkop; чистая установка APK и Full требуют отдельной live-проверки.
+Скриншот текущего интерфейса v0.3.0 в браузере: настоящие компоненты LuCI, демонстрационные названия серверов и результаты измерений. Мониторинг и чтение истории также проверены на работающем OpenWrt/Forkop; чистая установка APK и Full требуют отдельной live-проверки.
 
 ## Возможности
 
@@ -48,6 +48,14 @@ LuCI-приложение и backend для безопасного сравне�
 Обзор, история и настройки используют общий адаптивный дизайн со светлой и тёмной темами. Совместимость компонентов показана компактной строкой, профили Quick/Gaming/Full — карточками, текущая проверка — блоком прогресса. В результатах сгруппированы задержка/P95, джиттер/скачки, потери/успешность; скорость скачивания показывается для Full.
 
 Подсказка графика появляется рядом с курсором или выбранной с клавиатуры точкой. Под графиком расположены сводные показатели, карточки статистики серверов и события. История содержит отдельные строки запусков с просмотром результатов и экспортом. Настройки разделены на вкладки; штатные Save/Reset LuCI сохраняют оформление. Версионированные пути ресурсов обновляют кэш интерфейса после установки.
+
+На странице обзора можно искать серверы по имени/tag и выбирать их флажками для любого профиля. Смена группы загружает её список и выбирает все серверы группы; поиск только фильтрует отображение, сохраняя выбор. «Выбрать всю группу» и «Снять выбор» действуют на всю группу.
+
+Перед ручным Full отображаются число серверов и объём скачивания. Разовый максимум `0` означает все выбранные серверы (при положительном лимите — первые N в порядке списка). Бюджет автоматически подставляется по объёму выбранных серверов, пока пользователь не изменил его вручную; максимум — 51200 MiB. При стандартном файле 1 GiB для 45 серверов нужно 46080 MiB. Недостаточный бюджет блокирует запуск Full в интерфейсе. Разовые значения не записываются в UCI: расписание и старые CLI/RPC-вызовы сохраняют настроенные ограничения, по умолчанию 15 серверов / 15360 MiB.
+
+RPC `start` дополнительно принимает строки `node_tags` (JSON-массив runtime tags), `max_nodes`, `max_traffic_mb`. CLI: `forkop-analyzer start PROFILE SELECTOR TAGS_JSON MAX_NODES MAX_TRAFFIC_MIB`. Пустой `node_tags` сохраняет прежний выбор по группе; явный пустой массив и неизвестные tags отклоняются. При явном списке пустой selector означает все группы. Перед запуском backend проверяет tags по текущему списку и фиксирует план; worker и счётчик используют один список. Адреса подписок и ключи в план не включаются.
+
+Full измеряет последовательное скачивание через тестируемый outbound с одного HTTPS endpoint. Это не многопоточный Speedtest: сервер назначения, маршрут и число соединений отличаются, поэтому результаты напрямую не сопоставимы.
 
 ## Архитектура
 
@@ -95,14 +103,14 @@ Backend использует только заявленные зависимо�
 
 Надёжный способ:
 
-1. Скачай из [GitHub Release v0.2.0](https://github.com/MaksSt/forkop-analyzer/releases/tag/v0.2.0):
-   - `forkop-analyzer-0.2.0-r1.apk`;
-   - `luci-app-forkop-analyzer-0.2.0-r1.apk`;
+1. Скачай из [GitHub Release v0.3.0](https://github.com/MaksSt/forkop-analyzer/releases/tag/v0.3.0):
+   - `forkop-analyzer-0.3.0-r1.apk`;
+   - `luci-app-forkop-analyzer-0.3.0-r1.apk`;
    - `SHA256SUMS`.
 2. Сверь SHA-256.
 3. Открой **System → Software → Upload Package**.
-4. Загрузи сначала `forkop-analyzer-0.2.0-r1.apk`.
-5. Затем загрузи `luci-app-forkop-analyzer-0.2.0-r1.apk`.
+4. Загрузи сначала `forkop-analyzer-0.3.0-r1.apk`.
+5. Затем загрузи `luci-app-forkop-analyzer-0.3.0-r1.apk`.
 6. Обнови страницу LuCI. Интерфейс появится в **Services → Forkop Analyzer**.
 
 Не вставляй GitHub URL в поле **Download and install package**: этот путь не проверен на целевой версии.
@@ -111,10 +119,10 @@ Backend использует только заявленные зависимо�
 
 ```sh
 wget -O /tmp/forkop-analyzer.apk \
-  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.2.0/forkop-analyzer-0.2.0-r1.apk
+  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.3.0/forkop-analyzer-0.3.0-r1.apk
 
 wget -O /tmp/luci-app-forkop-analyzer.apk \
-  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.2.0/luci-app-forkop-analyzer-0.2.0-r1.apk
+  https://github.com/MaksSt/forkop-analyzer/releases/download/v0.3.0/luci-app-forkop-analyzer-0.3.0-r1.apk
 
 apk add --allow-untrusted \
   /tmp/forkop-analyzer.apk \
@@ -130,7 +138,7 @@ apk add --allow-untrusted \
 ```sh
 wget -O /tmp/install-forkop-analyzer.sh \
   https://raw.githubusercontent.com/MaksSt/forkop-analyzer/main/install.sh
-sh /tmp/install-forkop-analyzer.sh --version v0.2.0
+sh /tmp/install-forkop-analyzer.sh --version v0.3.0
 ```
 
 `install.sh` проверяет OpenWrt/apk, Forkop, package architecture и `SHA256SUMS`; TLS verification не отключается. Доступны `--prerelease`, `--no-start`, `--uninstall`, `--help`.
@@ -147,7 +155,7 @@ apk add --allow-untrusted \
 /etc/init.d/rpcd restart
 ```
 
-Команда соответствует installer v0.2.0, но ещё не проверена на чистом live OpenWrt 25.12.4.
+Команда соответствует installer v0.3.0, но ещё не проверена на чистом live OpenWrt 25.12.4.
 
 ## Удаление
 
@@ -309,8 +317,8 @@ make package/luci-app-forkop-analyzer/compile V=s
 
 GitHub Actions скачивает SDK только с `downloads.openwrt.org`, проверяет SDK по official `sha256sums`, pin-ит Forkop commit, собирает оба APK, проверяет contents/dependencies и формирует детерминированные assets:
 
-- `forkop-analyzer-0.2.0-r1.apk`;
-- `luci-app-forkop-analyzer-0.2.0-r1.apk`;
+- `forkop-analyzer-0.3.0-r1.apk`;
+- `luci-app-forkop-analyzer-0.3.0-r1.apk`;
 - `SHA256SUMS`.
 
 Workflow запускается на push в `main`, pull request с изменениями кода/сборки и вручную. Push в `main` сохраняет APK в **Actions → Artifacts**; GitHub Release автоматически создаётся при push тега `v*`, совпадающего с версией пакетов. Ручной запуск публикует релиз только при включённом `upload_release`.
@@ -349,3 +357,19 @@ SDK build — основная integration check. Live checks start/stop/restart
 ## Лицензия
 
 [MIT](LICENSE). Forkop и luci-app-cloudflareapi не включены в этот репозиторий и сохраняют собственные лицензии.
+
+## Доступность сайтов (Sites)
+
+В общем селекторе «Выбрать найденные» / «Снять найденные» действуют только на результаты текущего поиска; выбор вне фильтра сохраняется. Кнопки всей группы работают независимо от поиска.
+
+Блок «Доступность сайтов» запускает профиль `sites` для выбранных серверов. На каждый сервер создаётся отдельный localhost SOCKS instance sing-box, как в Full. Выполняются HTTPS HEAD-запросы с DNS через SOCKS (`socks5h`), проверкой TLS, максимум тремя HTTPS-редиректами и общим timeout 10 секунд на сайт. Тело страницы не загружается. Production selector не переключается. Одновременно может работать только один job; отмена, история и JSON/CSV доступны и для Sites.
+
+15 доменов зафиксированы в `sites.lst` из [itdoginfo/allow-domains, Russia/inside-raw.lst](https://github.com/itdoginfo/allow-domains/blob/main/Russia/inside-raw.lst), сверены 2026-09-13: YouTube, Discord, Instagram, Facebook, X/Twitter, LinkedIn, TikTok, BBC, DW, Meduza, TV Rain, RFE/RL, Patreon, Proton (X и Twitter проверяются отдельными доменами). Наличие домена в исходном списке не доказывает текущую блокировку конкретным провайдером. Список не загружается во время каждого теста.
+
+HTTP 2xx означает успешный HEAD-ответ; 3xx — редирект; 4xx — ответ с ограничением/ошибкой сайта; 5xx — ошибка сервера. Ошибки DNS/TLS/соединения и timeout показываются отдельно с кодом curl; ошибка запуска isolated VPN не приписывается сайту. Это проверка HTTPS-доступности через VPN, без сравнения с прямым подключением; она не гарантирует работу видео, авторизации или всех функций сервиса. Время ответа включает DNS, соединение, TLS и редиректы, а не ICMP ping.
+
+Результаты сохраняются после каждого сайта, поэтому отмена сохраняет уже полученные ответы. RPC `site_targets` возвращает фиксированный список; `start` принимает `profile: "sites"` и тот же `node_tags`, что другие режимы. CSV Sites содержит строки «сервер–сайт» с HTTP, временем и кодом curl; benchmark CSV других профилей не меняется.
+
+Emoji-флаги стран в названиях серверов отображаются локальными SVG во всех блоках обзора и истории, включая динамические результаты и подсказки мониторинга. Это обход отсутствия флагов в системном emoji-шрифте Windows; исходные tags/названия и экспорт не меняются. Внешних запросов за флагами нет. Использованы 257 двухбуквенных SVG из [flag-icons](https://github.com/lipis/flag-icons), MIT, copyright Panayiotis Lipiridis; лицензия включена в `flags-LICENSE.txt`. Неизвестные обозначения остаются исходным текстом.
+
+В Results доступны подвкладки Quick, Gaming, Full и «Доступность сайтов»; одновременно отображаются результаты только выбранного типа. RPC `delete_result(job_id)` и кнопка «Удалить отменённую» удаляют только запись со статусом `cancelled`; запись активного worker защищена даже при переходе в этот статус. Остальные результаты сохраняются.

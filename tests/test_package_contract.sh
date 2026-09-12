@@ -12,11 +12,13 @@ forkop-analyzer/files/usr/libexec/forkop-analyzer
 forkop-analyzer/files/usr/libexec/forkop-analyzer-worker
 forkop-analyzer/files/usr/lib/forkop-analyzer/forkop_adapter.uc
 forkop-analyzer/files/usr/lib/forkop-analyzer/latency.sh
+forkop-analyzer/files/usr/lib/forkop-analyzer/sites.lst
 forkop-analyzer/files/usr/share/rpcd/ucode/forkop-analyzer
 luci-app-forkop-analyzer/Makefile
 luci-app-forkop-analyzer/root/usr/share/luci/menu.d/luci-app-forkop-analyzer.json
 luci-app-forkop-analyzer/root/usr/share/rpcd/acl.d/luci-app-forkop-analyzer.json
-luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/overview-v6.js
+luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/overview-v11.js
+luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/node-picker-v3.css
 .github/workflows/build-openwrt-apk.yml
 install.sh
 README.md
@@ -30,9 +32,9 @@ printf '%s\n' "$required_files" | while IFS= read -r path; do
 	fi
 done
 
-grep -q '^\s*PKG_VERSION:=0.2.0$' "$ROOT/forkop-analyzer/Makefile"
+grep -q '^\s*PKG_VERSION:=0.3.0$' "$ROOT/forkop-analyzer/Makefile"
 grep -q '^\s*PKG_RELEASE:=1$' "$ROOT/forkop-analyzer/Makefile"
-grep -q '^\s*PKG_VERSION:=0.2.0$' "$ROOT/luci-app-forkop-analyzer/Makefile"
+grep -q '^\s*PKG_VERSION:=0.3.0$' "$ROOT/luci-app-forkop-analyzer/Makefile"
 grep -q '^\s*PKG_RELEASE:=1$' "$ROOT/luci-app-forkop-analyzer/Makefile"
 grep -q 'LUCI_DEPENDS:=+forkop-analyzer' "$ROOT/luci-app-forkop-analyzer/Makefile"
 grep -q 'PKGARCH:=all' "$ROOT/forkop-analyzer/Makefile"

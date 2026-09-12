@@ -6,8 +6,8 @@ ADAPTER="$ROOT/forkop-analyzer/files/usr/lib/forkop-analyzer/forkop_adapter.uc"
 CLI="$ROOT/forkop-analyzer/files/usr/lib/forkop-analyzer/adapter_cli.uc"
 WORKER="$ROOT/forkop-analyzer/files/usr/libexec/forkop-analyzer-worker"
 STORE="$ROOT/forkop-analyzer/files/usr/lib/forkop-analyzer/result_store.uc"
-OVERVIEW="$ROOT/luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/overview-v6.js"
-RESULTS="$ROOT/luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/results-v4.js"
+OVERVIEW="$ROOT/luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/overview-v11.js"
+RESULTS="$ROOT/luci-app-forkop-analyzer/htdocs/luci-static/resources/view/forkop-analyzer/results-v9.js"
 MENU="$ROOT/luci-app-forkop-analyzer/root/usr/share/luci/menu.d/luci-app-forkop-analyzer.json"
 
 grep -Fq "SECTION_CACHE_DIR = '/var/run/forkop/section-cache'" "$ADAPTER"
@@ -26,7 +26,7 @@ for view in "$OVERVIEW" "$RESULTS"; do
 done
 
 grep -Fq "callNodes('')" "$RESULTS"
-grep -Fq 'forkop-analyzer/overview-v6' "$MENU"
-grep -Fq 'forkop-analyzer/results-v4' "$MENU"
+grep -Fq 'forkop-analyzer/overview-v11' "$MENU"
+grep -Fq 'forkop-analyzer/results-v9' "$MENU"
 
 printf 'Display name contract tests passed.\n'

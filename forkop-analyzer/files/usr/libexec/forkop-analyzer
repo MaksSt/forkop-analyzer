@@ -22,7 +22,7 @@ json_error() {
 		DISABLED) message='Forkop Analyzer is disabled in UCI' ;;
 		ALREADY_RUNNING) message='A benchmark is already running' ;;
 		NO_NODES) message='No benchmarkable proxy outbounds were found' ;;
-		INVALID_PROFILE) message='Profile must be quick, gaming or full' ;;
+		INVALID_PROFILE) message='Profile must be quick, gaming, full or sites' ;;
 		CAPABILITY_UNAVAILABLE) message='Forkop or its local Clash API is unavailable or incompatible' ;;
 		FULL_UNAVAILABLE) message='Isolated Full benchmark is not supported by the current runtime' ;;
 		JOB_NOT_FOUND) message='Benchmark job was not found' ;;
@@ -119,7 +119,7 @@ recover_stale_job() {
 		chmod 600 "$RUNTIME_DIR/last_job"
 	fi
 
-	rm -f "$RUNTIME_DIR/active_job" "$RUNTIME_DIR/$job.pid" "$RUNTIME_DIR/$job.cancel" "$state_path"
+	rm -f "$RUNTIME_DIR/active_job" "$RUNTIME_DIR/$job.pid" "$RUNTIME_DIR/$job.cancel" "$state_path" "$TMP_ROOT/$job.nodes.tsv"
 	rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
 }
 
@@ -130,6 +130,17 @@ configured_selector() {
 start_benchmark() {
 	profile="$1"
 	selector="$2"
+	node_tags="$3"
+	max_nodes="$4"
+	max_traffic_mb="$5"
+	case "$max_nodes" in *[!0-9]*) json_error INVALID_ARGUMENT; return 1 ;; esac
+	case "$max_traffic_mb" in *[!0-9]*) json_error INVALID_ARGUMENT; return 1 ;; esac
+	if [ -n "$max_nodes" ] && { [ "${#max_nodes}" -gt 4 ] || [ "$max_nodes" -gt 1000 ]; }; then
+		json_error INVALID_ARGUMENT; return 1
+	fi
+	if [ -n "$max_traffic_mb" ] && { [ "${#max_traffic_mb}" -gt 5 ] || [ "$max_traffic_mb" -lt 1 ] || [ "$max_traffic_mb" -gt 51200 ]; }; then
+		json_error INVALID_ARGUMENT; return 1
+	fi
 
 	[ "$(uci -q get "$CONFIG.main.enabled")" = '1' ] || {
 		json_error DISABLED
@@ -137,7 +148,7 @@ start_benchmark() {
 	}
 
 	case "$profile" in
-		quick|gaming|full) ;;
+		quick|gaming|full|sites) ;;
 		*) json_error INVALID_PROFILE; return 1 ;;
 	esac
 
@@ -152,7 +163,7 @@ start_benchmark() {
 		json_error CAPABILITY_UNAVAILABLE
 		return 1
 	fi
-	if [ "$profile" = 'full' ] && [ "$full_available" != 'true' ]; then
+	if { [ "$profile" = 'full' ] || [ "$profile" = 'sites' ]; } && [ "$full_available" != 'true' ]; then
 		json_error FULL_UNAVAILABLE
 		return 1
 	fi
@@ -161,28 +172,37 @@ start_benchmark() {
 		return 1
 	fi
 
-	[ -n "$selector" ] || selector="$(configured_selector)"
+	[ -n "$selector" ] || [ -n "$node_tags" ] || selector="$(configured_selector)"
 	nodes_file="$TMP_ROOT/start-nodes-$$.tsv"
-	if ! adapter benchmark-nodes-lines "$selector" > "$nodes_file"; then
+	if ! adapter benchmark-nodes-lines "$selector" "$node_tags" > "$nodes_file"; then
 		rm -f "$nodes_file"
 		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		if [ -n "$node_tags" ]; then json_error INVALID_ARGUMENT; return 1; fi
 		json_error NO_NODES
 		return 1
 	fi
 	total="$(wc -l < "$nodes_file" | tr -d ' ')"
-	rm -f "$nodes_file"
 	case "$total" in
-		''|*[!0-9]*|0) rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true; json_error NO_NODES; return 1 ;;
+		''|*[!0-9]*|0) rm -f "$nodes_file"; rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true; json_error NO_NODES; return 1 ;;
 	esac
 
 	if [ "$profile" = 'full' ]; then
-		full_max_nodes="$(uci -q get "$CONFIG.main.full_max_nodes")"
+		full_max_nodes="${max_nodes:-$(uci -q get "$CONFIG.main.full_max_nodes")}"
 		case "$full_max_nodes" in ''|*[!0-9]*) full_max_nodes=15 ;; esac
-		[ "$full_max_nodes" -gt 0 ] || full_max_nodes=15
-		[ "$total" -le "$full_max_nodes" ] || total="$full_max_nodes"
+		if [ "$full_max_nodes" -gt 0 ] && [ "$total" -gt "$full_max_nodes" ]; then
+			total="$full_max_nodes"
+		fi
 	fi
 
 	job_id="$(date -u '+%Y%m%dT%H%M%SZ')-$$"
+	plan_path="$TMP_ROOT/$job_id.nodes.tsv"
+	if ! head -n "$total" "$nodes_file" > "$plan_path"; then
+		rm -f "$nodes_file" "$plan_path"
+		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		json_error START_FAILED; return 1
+	fi
+	rm -f "$nodes_file"
+	chmod 600 "$plan_path"
 	state_path="$RUNTIME_DIR/$job_id.json"
 	result_path="$RESULTS_DIR/$job_id.json"
 	original_node=''
@@ -192,6 +212,7 @@ start_benchmark() {
 
 	if ! store init "$state_path" "$result_path" "$job_id" "$profile" "$selector" "$original_node" "$total" >/dev/null; then
 		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		rm -f "$plan_path"
 		json_error START_FAILED
 		return 1
 	fi
@@ -199,7 +220,7 @@ start_benchmark() {
 	printf '%s\n' "$job_id" > "$RUNTIME_DIR/active_job"
 	chmod 600 "$RUNTIME_DIR/active_job" "$state_path" "$result_path"
 
-	"$WORKER" "$job_id" "$profile" "$selector" "$original_node" "$total" </dev/null > "$RUNTIME_DIR/$job_id.log" 2>&1 &
+	"$WORKER" "$job_id" "$profile" "$selector" "$original_node" "$total" "$max_traffic_mb" </dev/null > "$RUNTIME_DIR/$job_id.log" 2>&1 &
 	pid=$!
 	printf '%s\n' "$pid" > "$RUNTIME_DIR/$job_id.pid"
 	chmod 600 "$RUNTIME_DIR/$job_id.pid" "$RUNTIME_DIR/$job_id.log"
@@ -208,6 +229,7 @@ start_benchmark() {
 		store finish "$state_path" "$result_path" failed 'Benchmark worker failed to start' "$original_node" 1 0 >/dev/null 2>&1 || true
 		rm -f "$RUNTIME_DIR/active_job" "$RUNTIME_DIR/$job_id.pid"
 		rmdir "$RUNTIME_DIR/active.lock" 2>/dev/null || true
+		rm -f "$plan_path"
 		json_error START_FAILED
 		return 1
 	fi
@@ -271,6 +293,17 @@ export_result() {
 	esac
 }
 
+delete_result() {
+ job="$1"
+ valid_job_id "$job" || { json_error INVALID_ARGUMENT; return 1; }
+ # Even a just-cancelled worker must finish releasing its files first.
+ if [ "$(read_active_job 2>/dev/null)" = "$job" ]; then
+  json_error ALREADY_RUNNING
+  return 1
+ fi
+ store delete-cancelled "$RESULTS_DIR/$job.json"
+}
+
 cleanup_runtime() {
 	job="$(active_job 2>/dev/null)" || job=''
 	if [ -n "$job" ]; then
@@ -291,18 +324,20 @@ cleanup_runtime() {
 
 case "$1" in
 	capabilities) adapter capabilities ;;
-	nodes) adapter benchmark-nodes "${2:-$(configured_selector)}" ;;
+	nodes) adapter benchmark-nodes "${2-$(configured_selector)}" ;;
 	selectors) adapter selectors ;;
+	site_targets) adapter site-targets ;;
 	monitor) ucode -L "$LIB_DIR" "$LIB_DIR/monitor.uc" read ;;
-	start) start_benchmark "$2" "$3" ;;
+	start) start_benchmark "$2" "$3" "$4" "$5" "$6" ;;
 	status) show_status "$2" ;;
 	cancel) cancel_benchmark "$2" ;;
 	results) ensure_dirs && store list "$RESULTS_DIR" ;;
+	delete_result) delete_result "$2" ;;
 	export) export_result "$2" "$3" ;;
 	select) adapter select-node "$2" "$3" ;;
 	cleanup) cleanup_runtime ;;
 	*)
-		printf '%s\n' 'Usage: forkop-analyzer {capabilities|nodes|selectors|monitor|start PROFILE [SELECTOR]|status [JOB]|cancel [JOB]|results|export FORMAT JOB|select SELECTOR OUTBOUND|cleanup}' >&2
+		printf '%s\n' 'Usage: forkop-analyzer {capabilities|nodes|selectors|monitor|start PROFILE [SELECTOR [TAGS_JSON [MAX_NODES [MAX_TRAFFIC_MIB]]]]|status [JOB]|cancel [JOB]|results|delete_result JOB|export FORMAT JOB|select SELECTOR OUTBOUND|cleanup}' >&2
 		json_error INVALID_ARGUMENT
 		exit 1
 	;;

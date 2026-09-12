@@ -33,8 +33,7 @@ function capture(args) {
 function command_json(args) {
 	let command = [ CLI ];
 	for (let arg in args)
-		if (as_string(arg) != '')
-			push(command, arg);
+		push(command, as_string(arg));
 	let result = capture(command);
 	try {
 		return json(result.output);
@@ -76,6 +75,9 @@ return {
 		selectors: {
 			call: function() { return command_json([ 'selectors' ]); }
 		},
+		site_targets: {
+			call: function() { return command_json([ 'site_targets' ]); }
+		},
 		monitor: {
 			call: function() { return command_json([ 'monitor' ]); }
 		},
@@ -86,13 +88,18 @@ return {
 		results: {
 			call: function() { return command_json([ 'results' ]); }
 		},
+		delete_result: {
+			args: { job_id: '' },
+			call: function(request) { return command_json([ 'delete_result', request.args.job_id ]); }
+		},
 		export: {
 			args: { format: '', job_id: '' },
 			call: function(request) { return export_result(request.args.format, request.args.job_id); }
 		},
 		start: {
-			args: { profile: '', selector: '' },
-			call: function(request) { return command_json([ 'start', request.args.profile, request.args.selector ]); }
+			args: { profile: '', selector: '', node_tags: '', max_nodes: '', max_traffic_mb: '' },
+			call: function(request) { return command_json([ 'start', request.args.profile, request.args.selector,
+				request.args.node_tags, request.args.max_nodes, request.args.max_traffic_mb ]); }
 		},
 		cancel: {
 			args: { job_id: '' },

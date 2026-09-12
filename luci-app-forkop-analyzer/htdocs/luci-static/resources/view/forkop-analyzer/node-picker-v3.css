@@ -1,0 +1,45 @@
+/* Селектор и Sites используют цветовые переменные основного интерфейса. */
+.forkop-analyzer-node-picker { margin: 1.25rem 0; padding: 1.25rem; border: 1px solid var(--fm-border); border-radius: 12px; background: var(--fm-raised); }
+.forkop-analyzer-picker-toolbar { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; }
+.forkop-analyzer-picker-toolbar input[type="search"] { flex: 1 1 240px; min-width: 0; width: 100%; max-width: 100%; min-height: 42px; border: 1px solid var(--fm-border); border-radius: 8px; padding: .6rem .85rem; background: var(--fm-bg); color: var(--fm-text); }
+.forkop-analyzer-picker-all { margin: .75rem 0; }
+.forkop-analyzer-node-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: .55rem; max-height: 340px; overflow: auto; padding: .2rem; scrollbar-gutter: stable; }
+.forkop-analyzer-node-choice { display: flex; align-items: center; gap: .75rem; min-height: 64px; margin: 0; padding: .75rem; border: 1px solid var(--fm-border); border-radius: 9px; background: var(--fm-bg); cursor: pointer; transition: border-color .12s; }
+.forkop-analyzer-node-choice:has(input:checked) { border-color: var(--fm-green); background: var(--fm-green-bg); }
+.forkop-analyzer-node-choice:focus-within { outline: 2px solid var(--fm-text); outline-offset: 1px; }
+.forkop-analyzer-node-choice span { min-width: 0; overflow-wrap: anywhere; }
+.forkop-analyzer-node-choice strong { display: block; color: var(--fm-text); font-size: .92rem; }
+.forkop-analyzer-node-choice small { display: block; color: var(--fm-muted); margin-top: .25rem; font-size: .78rem; }
+.forkop-analyzer-node-choice input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: var(--fm-green); }
+.forkop-analyzer-run-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--fm-border); }
+.forkop-analyzer-run-limits label { color: var(--fm-muted); font-size: .88rem; }
+.forkop-analyzer-run-limits input { display: block; width: 100%; min-height: 42px; margin-top: .5rem; border: 1px solid var(--fm-border); border-radius: 8px; padding: .5rem .75rem; background: var(--fm-bg); color: var(--fm-text); }
+.forkop-analyzer-sites-setup { padding: 1.5rem; margin-bottom: 1.25rem; }
+.forkop-analyzer-site-targets { display: flex; flex-wrap: wrap; gap: .5rem; margin: .85rem 0; }
+.forkop-analyzer-site-targets span { padding: .35rem .65rem; background: var(--fm-raised); border: 1px solid var(--fm-border); border-radius: 6px; overflow-wrap: anywhere; }
+.forkop-analyzer-sites-setup summary, .forkop-analyzer-site-server summary { cursor: pointer; padding: .75rem 0; min-height: 44px; }
+.forkop-analyzer-site-server { border-top: 1px solid var(--fm-border); padding: 0 1.25rem; }
+.forkop-analyzer-site-server summary strong { overflow-wrap: anywhere; }
+.forkop-analyzer-site-server summary span { display: block; color: var(--fm-muted); margin: .35rem 0 0 1rem; font-size: .85rem; }
+@media (max-width: 600px) {
+ .forkop-analyzer-node-picker, .forkop-analyzer-sites-setup { padding: .85rem; }
+ .forkop-analyzer-picker-toolbar .btn { flex: 1 1 130px; min-height: 44px; }
+ .forkop-analyzer-node-list { max-height: 300px; }
+ .forkop-analyzer-site-server { padding: 0 .75rem; }
+}
+.forkop-analyzer-app .forkop-analyzer-node-choice input[type="checkbox"] {
+ appearance: none; -webkit-appearance: none; display: inline-grid; place-content: center;
+ box-sizing: border-box; width: 18px; height: 18px; min-width: 18px; max-width: 18px;
+ min-height: 18px; max-height: 18px; flex: 0 0 18px; margin: 0; padding: 0;
+ border: 1px solid var(--fm-muted); border-radius: 4px; background: var(--fm-bg);
+ color: var(--fm-bg); box-shadow: none; cursor: pointer;
+}
+.forkop-analyzer-app .forkop-analyzer-node-choice input[type="checkbox"]::before {
+ content: ''; display: block; box-sizing: border-box; width: 5px; height: 9px;
+ position: static; margin: -2px 0 0; border: solid currentColor; border-width: 0 2px 2px 0;
+ background: none; box-shadow: none; transform: rotate(45deg) scale(0);
+}
+.forkop-analyzer-app .forkop-analyzer-node-choice input[type="checkbox"]::after { content: none; }
+.forkop-analyzer-app .forkop-analyzer-node-choice input[type="checkbox"]:checked { background: var(--fm-green); border-color: var(--fm-green); }
+.forkop-analyzer-app .forkop-analyzer-node-choice input[type="checkbox"]:checked::before { transform: rotate(45deg) scale(1); }
+.forkop-analyzer-app .forkop-analyzer-node-choice input[type="checkbox"]:focus-visible { outline: 2px solid var(--fm-text); outline-offset: 3px; box-shadow: none; }

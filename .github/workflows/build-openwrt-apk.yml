@@ -19,7 +19,7 @@ on:
       release_tag:
         description: GitHub Release tag
         required: true
-        default: v0.2.0
+        default: v0.3.0
   push:
     branches:
       - main
@@ -38,10 +38,28 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run all contracts and native ucode integration tests
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/source:ro" alpine:3.22 sh -ec '
+            apk add --no-cache ucode nodejs python3 coreutils
+            cp -a /source /work
+            cd /work
+            chmod +x scripts/*.sh tests/*.sh
+            scripts/check-version.sh
+            scripts/validate.sh
+          '
+
   build:
+    needs: test
     runs-on: ubuntu-24.04
     env:
-      PROJECT_VERSION: "0.2.0"
+      PROJECT_VERSION: "0.3.0"
       PROJECT_RELEASE: "1"
       FORKOP_SOURCE_SHA: "dd483297be0ac4e52bb8f482e2640238b75af532"
 
@@ -258,39 +276,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          release_notes="$RUNNER_TEMP/release-notes.md"
-          cat > "$release_notes" <<EOF
-          ## Изменения
-
-          - Фоновый мониторинг активного VPN: общий график задержки, цветные участки при смене сервера, разрывы связи и подсказка у курсора. История за 24 часа собирается на роутере, даже когда страница закрыта; после перезагрузки она начинается заново.
-          - Выделение диапазона зажатой ЛКМ приближает график и пересчитывает статистику. Двойной щелчок или кнопка сбрасывают масштаб; с клавиатуры доступны Shift со стрелками и Enter.
-          - Статистика по серверам: эпизоды потери связи, переходы, средняя задержка, время доступности и журнал событий. Пропуски данных учитываются отдельно от неудачных проб.
-          - Исправлено наследование статистики при замене сервера с прежним tag: история сохраняет название на момент наблюдения. Имена узлов также сохраняются в результатах и экспорте.
-          - Единый адаптивный интерфейс обзора, результатов и настроек; светлая и тёмная темы, компактные блоки совместимости и профилей.
-          - Full создаёт конфигурацию отдельного sing-box из выбранного outbound и его зависимостей. Production endpoints, включая Tailscale, не мешают независимой проверке VPN.
-          - Full по умолчанию скачивает 1 GiB на узел: до 15 узлов и 15 GiB на запуск. Улучшены учёт частичных загрузок, скорость и диагностика ошибок.
-          - Планировщик сохраняет дневной checkpoint между перезагрузками и не повторяет уже запущенную в этот день проверку.
-          - Сборка APK запускается при push в main; тег публикует релиз. Проверка содержимого APK учитывает версионные имена модулей LuCI, backend мониторинга тестируется с ucode из SDK.
-
-          ## Совместимость
-
-          - OpenWrt ${OPENWRT_VERSION} и ветка 25.12.x с apk.
-          - Forkop commit ${FORKOP_SOURCE_SHA} (version 1.0.5 contract).
-
-          ## Обновление
-
-          Скачайте оба APK и выполните:
-
-          \`\`\`sh
-          apk add --allow-untrusted \\
-            /tmp/forkop-analyzer.apk \\
-            /tmp/luci-app-forkop-analyzer.apk
-          /etc/init.d/forkop-analyzer restart
-          /etc/init.d/rpcd restart
-          \`\`\`
-
-          > Full mode создаёт реальный benchmark-трафик. Перед запуском проверьте \`max_traffic_mb\`, \`full_max_nodes\` и условия VPN-провайдера.
-          EOF
+          release_notes="$GITHUB_WORKSPACE/docs/releases/v${PROJECT_VERSION}.md"
+          test -s "$release_notes"
 
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \

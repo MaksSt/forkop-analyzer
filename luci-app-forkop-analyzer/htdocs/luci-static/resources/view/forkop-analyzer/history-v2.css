@@ -1,0 +1,8 @@
+.forkop-analyzer-history-groups { min-width: 0; display: grid; gap: 1rem; }
+.forkop-analyzer-app .forkop-analyzer-history-actions { flex-wrap: wrap; min-width: 0; }
+.forkop-analyzer-app .forkop-analyzer-history-actions > .btn { white-space: normal; max-width: 100%; }
+.forkop-analyzer-history-tabs { display: flex; flex-wrap: wrap; gap: .4rem; }
+.forkop-analyzer-app .forkop-analyzer-history-tabs [role="tab"] { padding: .65rem .85rem; min-height: 44px; border: 1px solid var(--fm-border); border-radius: 7px; color: var(--fm-muted); background: var(--fm-raised); cursor: pointer; }
+.forkop-analyzer-app .forkop-analyzer-history-tabs [aria-selected="true"] { color: var(--fa-accent); background: var(--fa-accent-bg); border-color: var(--fa-accent); }
+.forkop-analyzer-history-tabs [role="tab"]:focus-visible { outline: 2px solid var(--fm-text); outline-offset: 2px; }
+.forkop-analyzer-history-groups [role="tabpanel"][hidden] { display: none; }

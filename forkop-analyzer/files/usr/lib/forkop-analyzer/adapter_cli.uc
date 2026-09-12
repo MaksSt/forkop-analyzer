@@ -21,6 +21,8 @@ let mode = ARGV[0] || '';
 
 if (mode == 'capabilities')
 	exit(success(adapter.get_capabilities()));
+else if (mode == 'site-targets')
+	exit(success(split(trim(require('fs').readfile('/usr/lib/forkop-analyzer/sites.lst') || ''), '\n')));
 else if (mode == 'subscriptions')
 	exit(success(adapter.get_subscriptions()));
 else if (mode == 'outbounds')
@@ -30,7 +32,20 @@ else if (mode == 'selectors')
 else if (mode == 'benchmark-nodes')
 	exit(success(adapter.get_benchmark_nodes(ARGV[1] || '')));
 else if (mode == 'benchmark-nodes-lines') {
-	for (let item in adapter.get_benchmark_nodes(ARGV[1] || '')) {
+	let nodes = adapter.get_benchmark_nodes(ARGV[1] || '');
+	if (ARGV[2] != null && ARGV[2] != '') {
+		let tags;
+		try { tags = json(ARGV[2]); }
+		catch (e) { exit(1); }
+		if (type(tags) != 'array' || length(tags) == 0 || length(tags) > 1000)
+			exit(1);
+		for (let tag in tags) {
+			if (type(tag) != 'string' || !length(filter(nodes, n => n.tag == tag)))
+				exit(1);
+		}
+		nodes = filter(nodes, n => index(tags, n.tag) >= 0);
+	}
+	for (let item in nodes) {
 		let tag = '' + item.tag;
 		let outbound_type = '' + item.type;
 		let display_name = '' + (item.display_name || item.tag);
